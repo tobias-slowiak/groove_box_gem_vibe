@@ -1,8 +1,9 @@
+<#WARNING:
+    for some reason the first make run of a session has to be run from the browser IDE
+#>
 <# Usage:
-   powershell -ExecutionPolicy Bypass `
-       -File G:\Other computers\Mein Laptop (1)\Organisation_aktuell\Projekte\instrument_proj\exportToBela\deploy_to_bela.ps1 [-Debug]
    (Run from a PowerShell prompt, e.g. PS C:\Users\tobia>)
-   powershell -ExecutionPolicy Bypass -File "\\wsl`$\Ubuntu\home\tobi\projects\instrument\instrument\deploy_to_bela.ps1" [-Debug]
+   powershell -ExecutionPolicy Bypass -File "\\wsl`$\Ubuntu\home\tobi\groove_box\deploy_to_bela.ps1" [-Debug]
 #>
 
 <#Warning:
@@ -17,8 +18,10 @@ param(
     [switch]$CopyAll
 )
 
+Write-Host "Starting deployment to Bela..."
+
 $BelaIp = "192.168.6.2"
-$LocalRoot = "\\wsl`$\Ubuntu\home\tobi\projects\instrument\instrument\"
+$LocalRoot = "\\wsl`$\Ubuntu\home\tobi\groove_box\"
 $Project = "instrumentFromPC"
 $RemoteFolder = "~/Bela/projects/" + $Project
 $MakeDir = "Bela/"
@@ -117,6 +120,9 @@ function Remove-RemoteArtifacts {
     }
 }
 
+Write-Host "[bela] Ensuring SD card is mounted..."
+Invoke-Ssh "mount | grep -q '^/dev/mmcblk0p1 on /mnt/sdcard ' || sudo mount /dev/mmcblk0p1 /mnt/sdcard"
+
 Invoke-Ssh "mkdir -p '$RemoteFolder' '$RemoteFolder/include' '$RemoteFolder/src'"
 
 if ($Rebuild) {
@@ -182,7 +188,8 @@ foreach ($entry in $entries) {
         if ($LASTEXITCODE -ne 0) { throw "Failed to copy $($entry.Key)" }
         $copied += $entry.Key
         Remove-RemoteArtifacts -Key $entry.Key
-        Write-Host "copied $entry."
+        $copiedName = Split-Path -Path $entry.Key -Leaf
+        Write-Host "copied $copiedName"
     }
 }
 

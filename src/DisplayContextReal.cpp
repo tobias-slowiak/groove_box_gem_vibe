@@ -5,13 +5,14 @@
 
 #include "../include/IDisplayContext.h"
 #include "../include/DisplayContextReal.h"
+#include "../include/ResourceManager.h"
+#include "../include/DebugLog.h"
 
 ///////////////////////////////////////////NONMEMBER-FUNCTIONS
 
 void displayThreadFunction(void* arg) {
-	IDisplayContext* displayContext = static_cast<IDisplayContext*>(arg);
-	std::atomic<bool>& updateDisplayFlag = displayContext->getUpdateDisplayFlag();
-    if (updateDisplayFlag) {
+	DisplayContextReal* displayContext = static_cast<DisplayContextReal*>(arg);
+    if (displayContext->getResourceManager()->getUpdateDisplayFlag()) {
         displayContext->renderDisplay();
     }
 }
@@ -46,7 +47,7 @@ std::vector<U8G2*> initU8G2s(){
 //////////////////////////////////MEMBER FUNCTIONS
 
 
-DisplayContextReal::DisplayContextReal(std::vector<U8G2*> u8g2s, std::atomic<bool>& updateDisplayFlag): u8g2s(u8g2s), updateDisplayFlag(updateDisplayFlag) {
+DisplayContextReal::DisplayContextReal(ResourceManager* resourceManager, std::vector<U8G2*> u8g2s): resourceManager(resourceManager), u8g2s(u8g2s){
 	lines = std::vector<std::vector<std::string>>{std::vector<std::string>(NUM_LINES,""), std::vector<std::string>(NUM_LINES,"")};
 	displayTask = Bela_createAuxiliaryTask(displayThreadFunction, 50, "displayTask", (void*)this);
 }
@@ -65,11 +66,17 @@ void DisplayContextReal::initDisplayContext() {
 }
 
 void DisplayContextReal::processBlockwise() {
-	if(updateDisplayFlag) Bela_scheduleAuxiliaryTask(displayTask);
+	if(resourceManager->getUpdateDisplayFlag()){
+		int scheduleResponse = -1;
+		scheduleResponse = Bela_scheduleAuxiliaryTask(displayTask);
+		if(scheduleResponse != 0 && scheduleResponse != EBUSY){
+			DEBUG_RT_PRINTF("DisplayContextReal::processBlockwise(): Bela_scheduleAuxiliaryTask sent error code: %d\n", scheduleResponse);
+		}
+	}
 }
 
 void DisplayContextReal::setLines(int displayNumber, int lineNumber, std::string line0, std::string line1, std::string line2, std::string line3) {
-	updateDisplayFlag = true;
+	resourceManager->setUpdateDisplayFlag(true);
 	lines.at(displayNumber).at(lineNumber) = line0;
 	if(line1 != "") lines.at(displayNumber).at(lineNumber + 1) = line1;
 	if(line2 != "") lines.at(displayNumber).at(lineNumber + 2) = line2;
@@ -78,7 +85,7 @@ void DisplayContextReal::setLines(int displayNumber, int lineNumber, std::string
 
 void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines){
 	this->lines = lines;
-	updateDisplayFlag = true;
+	resourceManager->setUpdateDisplayFlag(true);
 }
 
 std::string DisplayContextReal::getLine(int displayNumber, int lineNumber) {
@@ -86,13 +93,17 @@ std::string DisplayContextReal::getLine(int displayNumber, int lineNumber) {
 }
 
 void DisplayContextReal::setProgress(int displayNumber, float percentage) {
-	updateDisplayFlag = true;
+	resourceManager->setUpdateDisplayFlag(true);
 	progress = percentage;
 	progressDisplay = displayNumber;
+	if(progress < 0.0){
+		//code to erase progress bar;
+		progressDisplay = -1;
+	}
 }
 
 std::atomic<bool>& DisplayContextReal::getUpdateDisplayFlag() {
-	return updateDisplayFlag;
+	return resourceManager->getUpdateDisplayFlag();
 }
 	
 AuxiliaryTask& DisplayContextReal::getDisplayTask() {
@@ -100,7 +111,6 @@ AuxiliaryTask& DisplayContextReal::getDisplayTask() {
 }
 
 void DisplayContextReal::renderDisplay() {
-	updateDisplayFlag = false;
 	for(int display = 0; display < 2; display++){
 	    u8g2s.at(display)->clearBuffer();
 	    // Draw text lines
@@ -115,5 +125,5 @@ void DisplayContextReal::renderDisplay() {
 	    }
 	    u8g2s.at(display)->sendBuffer();
 	}
-
+	resourceManager->setUpdateDisplayFlag(false);
 }

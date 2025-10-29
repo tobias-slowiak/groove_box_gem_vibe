@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "../include/ResourceManager.h"
+#include "../include/StreamingBuffer.h"
 #include "../include/ModeManager.h"
 #include "../include/DeviceMap.h"
 #include "../include/BelaInterface.h"
@@ -22,6 +23,7 @@
 #include "../include/IMidi.h"
 #include "../include/MidiReal.h"
 #include "../include/MidiFake.h"
+#include "../include/SamplePack.h"
 
 
 
@@ -64,9 +66,9 @@ void ResourceManager::setup(BelaContext* context){
 		printf("Interface Connected\n");
 		interface = new BelaInterface(this);
 		std::vector<U8G2*> u8g2s = initU8G2s();
-	    displayContext = new DisplayContextReal(u8g2s, updateDisplayFlag);
+	    displayContext = new DisplayContextReal(this, u8g2s);
 	    displayContext->initDisplayContext();
-	    updateDisplayFlag = false;
+	    this->setUpdateDisplayFlag(false);
 	} else {
 		printf("Interface not Connected\n");
 		displayContext = new DisplayContextFake();
@@ -101,6 +103,7 @@ void ResourceManager::setup(BelaContext* context){
 	audioFramesPerSecond = context->audioSampleRate;
 	audioInputChannels = context->audioInChannels;
 	audioFramesPerBlock = context->audioFrames;
+	blocksPerSecond = audioFramesPerSecond / audioFramesPerBlock;
 	
 	//Classes
 	controller = new Controller(this);
@@ -110,6 +113,8 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed Samplers\n");
 	loopers = new Loopers(this);
 	printf("Constructed Loopers\n");
+	keyInstrumentSamplePack = new SamplePack(this, "keyInstrument", "converted_new", 44100 * 6 * 100); // approx 100 MB of space
+	printf("Constructed keyInstrumentSamplePack\n");
 	
 	this->makeTestSample();
 	printf("Made TestSample\n");
@@ -229,6 +234,15 @@ IMidi* ResourceManager::getControlMidi(){
 	}
 }
 
+SamplePack* ResourceManager::getKeyInstrumentSamplePack(){
+	if (this->keyInstrumentSamplePack)
+		return this->keyInstrumentSamplePack;
+	else {
+		rt_printf("ERROR: trying getKeyInstrumentSamplePack(), but that is nullptr\n");
+		throw std::runtime_error("getKeyInstrumentSamplePack() failed: is nullptr");
+	}
+}
+
 
 std::vector<float>* ResourceManager::makeTestSample(){
 	testSample = new std::vector<float>();
@@ -259,8 +273,21 @@ std::vector<float>* ResourceManager::getTestSampleVector(){
 std::atomic<bool>& ResourceManager::getUpdateDisplayFlag() {
 	return updateDisplayFlag;
 }
-void ResourceManager::updateDisplay(){
-	updateDisplayFlag = true;
+std::atomic<bool>& ResourceManager::getStreamLoadingFlag(){
+	return streamLoadingFlag;
+}
+
+std::atomic<bool>& ResourceManager::getStreamStartsFlag(){
+	return streamStartsFlag;
+}
+void ResourceManager::setUpdateDisplayFlag(bool val){
+	updateDisplayFlag = val;
+}
+void ResourceManager::setStreamLoadingFlag(bool val){
+	streamLoadingFlag = val;
+}
+void ResourceManager::setStreamStartsFlag(bool val){
+	streamStartsFlag = val;
 }
 
 

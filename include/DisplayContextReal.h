@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "IDisplayContext.h"
+class ResourceManager;
 
 ///////////////////////////////////////////NONMEMBER-FUNCTIONS
 
@@ -19,7 +20,7 @@ std::vector<U8G2*> initU8G2s();
 
 class DisplayContextReal : public IDisplayContext {
 public:
-    DisplayContextReal(std::vector<U8G2*> u8g2s, std::atomic<bool>& updateDisplayFlag);
+    DisplayContextReal(ResourceManager* resourceManager, std::vector<U8G2*> u8g2s);
     
     void initDisplayContext() override;
     
@@ -34,15 +35,17 @@ public:
 	void setProgress(int displayNumber, float percentage) override;
     
 	std::atomic<bool>& getUpdateDisplayFlag() override;
+
+    ResourceManager* getResourceManager() { return resourceManager; }
 	
 	AuxiliaryTask& getDisplayTask() override;
 	
 	void renderDisplay() override;
 	
 private:
+    ResourceManager* resourceManager;
 	std::vector<std::vector<std::string>> lines;
 	std::vector<U8G2*> u8g2s;
-    std::atomic<bool>& updateDisplayFlag;
     AuxiliaryTask displayTask;
     int progressDisplay = -1; //determines which display shows the progress bar
     float progress = 0.0f;

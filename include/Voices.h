@@ -13,7 +13,8 @@ class Voice {
 public:
 	Voice(std::pair<float*,int> sample, int note, ResourceManager* resourceManager, float attack = 0.0f, float decay = 0.0f,
 			float sustain = 1.0f, float release = 0.0f, float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false);
-	
+	Voice(std::vector<float>* sample, int note, ResourceManager* resourceManager, float attack = 0.0f, float decay = 0.0f,
+			float sustain = 1.0f, float release = 0.0f, float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false);
 
     void noteOff(){adsr.noteOff();}
         
@@ -50,6 +51,8 @@ public:
     void clear(){activeVoices.clear();}
     
     void triggerVoice(std::pair<float*, int> sample, int note, float attack = 0.0f, float decay = 0.0f,
+    		float sustain = 1.0f, float release = 0.1f, float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false);
+	void triggerVoice(std::vector<float>* sample, int note, float attack = 0.0f, float decay = 0.0f,
     		float sustain = 1.0f, float release = 0.1f, float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false);
 
 	void triggerOff(int note);

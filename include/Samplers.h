@@ -32,6 +32,7 @@ public:
     
 private:
 	int numberOfFrames = 0;
+    //TODO: make one big buffer for all samplers
 	std::vector<float> samplerBuffer;
     int bufferReadIndex = 0;
     int numberOfSlices = 0;

@@ -1,6 +1,6 @@
 #include "../include/ADSR.h"
 #include "../include/ResourceManager.h"
-
+//test
 void ADSR::init() {
     //TODO: maybe put this into the constructor?
     attackIncrement = (attackTime > 0.0f) ? (1.0f / (attackTime * resourceManager->audioFramesPerSecond)) : 1.0f;

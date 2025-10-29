@@ -16,6 +16,8 @@ enum class Mode{
 	SamplersTest,
 	MidiTest,
 	ControllerTest,
+	SamplePack,
+	StreamingBandwidthTest,
 	COUNT
 };
 
@@ -42,14 +44,21 @@ public:
 	void renderMidiTest(BelaContext *context, ResourceManager* resourceManager);
 	
 	void renderControllerTest(BelaContext *context, ResourceManager* resourceManager);
+
+	void renderSamplePackTest(BelaContext *context, ResourceManager* resourceManager);
+
+	void renderStreamingBandwidthTest(BelaContext *context, ResourceManager* resourceManager);
 	
 	void modeShift(int indexShift, Mode* mode);
 	
-	bool secondsElapsed(int blocksElapsed, int seconds);
+	bool secondsElapsed(int blocksElapsed, float seconds);
+
+	float blocksToSeconds(int blocksElapsed);
 private:
 	ResourceManager* resourceManager;
 	BelaContext* context;
 	Mode mode;
+	bool currentTestDone = false;
 	bool testAll = false;
 	std::vector<std::string> modeNames;
 };

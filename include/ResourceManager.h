@@ -19,6 +19,7 @@ class IDisplayContext;
 class DisplayContextReal;
 class DisplayContextFake;
 class IMidi;
+class SamplePack;
 
 
 class ResourceManager{
@@ -51,6 +52,8 @@ public:
 	IMidi* getKeyMidi();
 	
 	IMidi* getControlMidi();
+
+	SamplePack* getKeyInstrumentSamplePack();
 	
 	
 	std::vector<float>* makeTestSample();
@@ -60,22 +63,31 @@ public:
 	std::vector<float>* getTestSampleVector();
 	
 	std::atomic<bool>& getUpdateDisplayFlag();
+
+	std::atomic<bool>& getStreamLoadingFlag();
+
+	std::atomic<bool>& getStreamStartsFlag();
 	
-	void updateDisplay();
+	void setUpdateDisplayFlag(bool val);
+
+	void setStreamLoadingFlag(bool val);
 	
+	void setStreamStartsFlag(bool val);
 	
 	///////////////////////////////PUBLIC VARIABLES
 	int audioFramesPerAnalogFrame;
 	int audioFramesPerSecond;
 	int audioInputChannels;
 	int audioFramesPerBlock;
+	int blocksPerSecond;
 	float LowerDBLimit = -60.0f;
 	float UpperDBLimit = 20.0f;
 	float UpperLimitInputGain = 20.0;
 	bool interfaceConnected = false;
 	bool keyMidiConnected = false;
 	bool controlMidiConnected = false;
-	bool currentTestDone = false;
+	float END_OF_SAMPLE = -999999.0f;
+	std::string SAMPLES_PATH = "/mnt/sdcard/Samples/";
 private:
 	BelaContext*context = nullptr;
 	ModeManager* modeManager = nullptr;
@@ -89,8 +101,11 @@ private:
 	IDisplayContext* displayContext = nullptr;
 	IMidi* keyMidi = nullptr;
 	IMidi* controlMidi = nullptr;
+	SamplePack* keyInstrumentSamplePack = nullptr;
 	
 	std::vector<float>* testSample = nullptr;
 	int testSampleSize = 0;
 	std::atomic<bool> updateDisplayFlag;
+	std::atomic<bool> streamLoadingFlag;
+	std::atomic<bool> streamStartsFlag;
 };

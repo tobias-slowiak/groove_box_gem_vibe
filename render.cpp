@@ -9,6 +9,9 @@
 //this file is only a dispatcher
 //in render/... there are render.h files defined, in which setupCase() renderCase() and cleanupCase() are implemented
 
+//TODO: looper test is still in the blockwise processing mode, change it to framewise processing mode
+//TODO: work out streaming form sd card
+//TODO make one big buffer also for samplers not only for loopers then also the SamplerS class makes sense.
 //TODO: Maybe make naming convention for private members like privateMemberVariable_
 //TODO: Reverb effect (where?). ema zamboni sais everything sound good with reverb
 //TODO: in deviceMap constructor make the stuff not dependent on ifdef but on a variable that is made at compile time. for that i would also need a way to tell what device is connected.
@@ -19,6 +22,20 @@
 TODO: the following calls cause a drop of blocks on the first call, warm them up in the setup:
 std::to_string(float)
 something in the voices class, check what -> TODO: why does the first initialized voice always cause a drop of blocks?
+*/
+
+/*
+TODO: make ResourceManager::updateDisplay to setUpdateDisplayFlag(bool) to be 
+the same as the steaming buffer flag.
+Also. make the thread flag thing unified in general. only use the atomic bools
+via getters and setters in the resource manager (or is another way better?)*/
+
+/*
+Notes:
+- Do not create 2 auxiliary tasks using the same obj. bela will reacti with malloc() or corrupted size vs. prev. size errors!
+- The prio of auxiliary tasks is not allowed to be 100
+- if i put rt_printf instead of printf in the auxiliary task i get very strange runtime errors. DONT!
+- debug prints on auxiliary tasks make the debugging more confusing because timing is irgendwos
 */
 
 ResourceManager* resourceManager;

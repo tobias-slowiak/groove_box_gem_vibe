@@ -11,7 +11,14 @@ Voice::Voice(std::pair<float*,int> sample, int note, ResourceManager* resourceMa
 	this->sample = sample.first;
 	this->sampleSize = sample.second;
 }
-
+//TODO: i would prefer to work with vectors but the sampler only lets me do float* and size. think about this.
+Voice::Voice(std::vector<float>* sample, int note, ResourceManager* resourceManager, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat)
+:  note(note), resourceManager(resourceManager), gain(gain), playbackRate(playbackRate), repeat(repeat) {
+	adsr = ADSR{attack, decay, sustain, release, resourceManager};
+	adsr.init();
+	this->sample = sample->data();
+	this->sampleSize = sample->size();
+}
     
 float Voice::process(){ // TODO: unelegant with the tuple, do differently
 	if((int)position + 1 >= sampleSize){
@@ -54,6 +61,15 @@ float Voices::process(){
 
 
 void Voices::triggerVoice(std::pair<float*, int> sample, int note, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat){
+	Voice newVoice = Voice(sample, note, resourceManager, attack, decay, sustain, release, gain, playbackRate, repeat);
+	if((int)activeVoices.size() >= maxVoices) {
+        // Voice stealing: remove the oldest voice
+        activeVoices.erase(activeVoices.begin());
+    }
+	activeVoices.push_back(newVoice);
+}
+
+void Voices::triggerVoice(std::vector<float>* sample, int note, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat){
 	Voice newVoice = Voice(sample, note, resourceManager, attack, decay, sustain, release, gain, playbackRate, repeat);
 	if((int)activeVoices.size() >= maxVoices) {
         // Voice stealing: remove the oldest voice
