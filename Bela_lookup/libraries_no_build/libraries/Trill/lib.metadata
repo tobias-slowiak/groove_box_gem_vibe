@@ -1,0 +1,17 @@
+name=Trill
+version=1.0.0
+author=Adan Benito<adan@bela.io>
+maintainer=Adan Benito<adan@bela.io>
+description=Library to handle I2C communication with Trill sensors for capacitive touch interaction with Bela.
+examples=Trill/bar-visual, Trill/bar-led, Trill/bar-sound, Trill/craft-sound, Trill/craft-visual, Trill/general-print, Trill/general-settings, Trill/square-visual, Trill/square-sound, Trill/ring-sound, Trill/ring-visual
+license=LGPL 3.0
+url=
+board=*
+dependencies=
+LDFLAGS=
+LDLIBS=
+CXXFLAGS=
+CC=
+CXX=
+CFLAGS=
+CPPFLAGS=

@@ -1,45 +1,48 @@
 #include "../include/Voices.h"
-
+//compile
 #include "../include/ADSR.h"
 #include "../include/ResourceManager.h"
 #include "../include/BasicUtilities.h"
+#include "../include/StreamingBuffer.h"
+#include <cassert>
 
-Voice::Voice(std::pair<float*,int> sample, int note, ResourceManager* resourceManager, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat)
-:  note(note), resourceManager(resourceManager), gain(gain), playbackRate(playbackRate), repeat(repeat) {
+Voice::Voice(StreamingBuffer* buffer, int note, int velocity, ResourceManager* resourceManager, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat)
+:  note(note), velocity(velocity), resourceManager(resourceManager), buffer(buffer),
+	gain(gain),
+	playbackRate(playbackRate), repeat(repeat) {
+	assert(resourceManager != nullptr);
+	assert(buffer != nullptr);
 	adsr = ADSR{attack, decay, sustain, release, resourceManager};
 	adsr.init();
-	this->sample = sample.first;
-	this->sampleSize = sample.second;
-}
-//TODO: i would prefer to work with vectors but the sampler only lets me do float* and size. think about this.
-Voice::Voice(std::vector<float>* sample, int note, ResourceManager* resourceManager, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat)
-:  note(note), resourceManager(resourceManager), gain(gain), playbackRate(playbackRate), repeat(repeat) {
-	adsr = ADSR{attack, decay, sustain, release, resourceManager};
-	adsr.init();
-	this->sample = sample->data();
-	this->sampleSize = sample->size();
+	if(floatIsEqual(playbackRate, 1.0f)) playbackRateIsOne = true;
+	requestId = buffer->requestSample({note, velocity});
 }
     
 float Voice::process(){ // TODO: unelegant with the tuple, do differently
-	if((int)position + 1 >= sampleSize){
-		if(repeat) position = 0.0f;
-		else{
-			adsr.instantOff();
-			return 0.0f;
-		}
-	}
-	float frame = 0.0f;
-	if(floatIsEqual(playbackRate, 1.0f)){
-		frame = sample[(int)position];
-	}
-	else{
-		int leftIdx = (int)position;
-		float diff = position - (float)leftIdx;
-		if(leftIdx < sampleSize - 2){
-			frame = sample[leftIdx] * (1-diff) + sample[leftIdx + 1] * diff;
+	assert(buffer != nullptr);
+	assert(resourceManager != nullptr);
+	if((int)(position + playbackRate) > (int)position){
+		currentSample = nextSample;
+		nextSample = buffer->getNextSample(requestId);
+		if(nextSample == resourceManager->END_OF_SAMPLE){
+			if(repeat){
+				position = 0.0f;
+				requestId = buffer->requestSample({note, velocity});
+			}else{
+				adsr.instantOff();
+				return 0.0f;
+			}
 		}
 	}
 	position += playbackRate;
+	float frame = 0.0f;
+	if(playbackRateIsOne){
+		frame = currentSample;
+	}
+	else{
+		float diff = position - (int)position;
+		frame = currentSample * (1-diff) + nextSample * diff;
+	}
 	return gain * adsr.process() * frame;
 }
 
@@ -60,8 +63,9 @@ float Voices::process(){
 }
 
 
-void Voices::triggerVoice(std::pair<float*, int> sample, int note, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat){
-	Voice newVoice = Voice(sample, note, resourceManager, attack, decay, sustain, release, gain, playbackRate, repeat);
+void Voices::triggerVoice(StreamingBuffer* buffer, int note, int velocity, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat){
+	assert(buffer != nullptr);
+	Voice newVoice = Voice(buffer, note, velocity, resourceManager, attack, decay, sustain, release, gain, playbackRate, repeat);
 	if((int)activeVoices.size() >= maxVoices) {
         // Voice stealing: remove the oldest voice
         activeVoices.erase(activeVoices.begin());
@@ -69,20 +73,13 @@ void Voices::triggerVoice(std::pair<float*, int> sample, int note, float attack,
 	activeVoices.push_back(newVoice);
 }
 
-void Voices::triggerVoice(std::vector<float>* sample, int note, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat){
-	Voice newVoice = Voice(sample, note, resourceManager, attack, decay, sustain, release, gain, playbackRate, repeat);
-	if((int)activeVoices.size() >= maxVoices) {
-        // Voice stealing: remove the oldest voice
-        activeVoices.erase(activeVoices.begin());
-    }
-	activeVoices.push_back(newVoice);
-}
 
 void Voices::triggerOff(int note){
 	for(int i = activeVoices.size() - 1; i >= 0; i--){
-		if(activeVoices.at(i).getNote() == note){
-			activeVoices.at(i).noteOff();
+		assert(i >= 0 && activeVoices.size() > static_cast<size_t>(i));
+		auto& voice = activeVoices.at(i);
+		if(voice.getNote() == note){
+			voice.noteOff();
 		}
 	}
 }
-

@@ -7,6 +7,7 @@
 #include <cstdio>  
 #include <cerrno>  
 #include <stdio.h>
+#include <cassert>
 
 #include "../include/ResourceManager.h"
 #include "../include/StreamingBuffer.h"
@@ -51,6 +52,7 @@ bool i2cDevicePresent(int bus, int address)
 
 
 void ResourceManager::setup(BelaContext* context){
+	assert(context != nullptr);
 	printf("------------------------------------\n");
 	printf("-----ResourceManager setup----------\n");
 	this->context = context;
@@ -113,7 +115,7 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed Samplers\n");
 	loopers = new Loopers(this);
 	printf("Constructed Loopers\n");
-	keyInstrumentSamplePack = new SamplePack(this, "keyInstrument", "converted_new", 44100 * 6 * 100); // approx 100 MB of space
+	keyInstrumentSamplePack = new SamplePack(this, "keyInstrument", "/mnt/sdcard/Samples/converted_new", 44100 * 6 * 100); // approx 100 MB of space
 	printf("Constructed keyInstrumentSamplePack\n");
 	
 	this->makeTestSample();
@@ -273,22 +275,6 @@ std::vector<float>* ResourceManager::getTestSampleVector(){
 std::atomic<bool>& ResourceManager::getUpdateDisplayFlag() {
 	return updateDisplayFlag;
 }
-std::atomic<bool>& ResourceManager::getStreamLoadingFlag(){
-	return streamLoadingFlag;
-}
-
-std::atomic<bool>& ResourceManager::getStreamStartsFlag(){
-	return streamStartsFlag;
-}
 void ResourceManager::setUpdateDisplayFlag(bool val){
 	updateDisplayFlag = val;
 }
-void ResourceManager::setStreamLoadingFlag(bool val){
-	streamLoadingFlag = val;
-}
-void ResourceManager::setStreamStartsFlag(bool val){
-	streamStartsFlag = val;
-}
-
-
-

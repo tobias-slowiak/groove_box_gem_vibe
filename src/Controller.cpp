@@ -2,6 +2,7 @@
 #include <string>
 #include <stdexcept>
 #include <math.h>
+#include <cassert>
 //test...
 #include "../include/IMidi.h"
 #include "../include/MidiReal.h"
@@ -18,17 +19,28 @@
 #include "../include/ResourceManager.h"
 
 Controller::Controller(ResourceManager* resourceManager): resourceManager(resourceManager){
+	assert(resourceManager != nullptr);
 	interface = resourceManager->getBelaInterface();
+	assert(interface != nullptr);
 	keyMidi = resourceManager->getKeyMidi();
+	assert(keyMidi != nullptr);
 	controlMidi = resourceManager->getControlMidi();
+	assert(controlMidi != nullptr);
 	displayContext = resourceManager->getDisplayContext();
+	assert(displayContext != nullptr);
 	deviceMap = resourceManager->getDeviceMap();
+	assert(deviceMap != nullptr);
 	
 	currentSamplerIndex = 0;
 }
 
 
 void Controller::processBlockwise(){
+	assert(interface != nullptr);
+	assert(deviceMap != nullptr);
+	assert(keyMidi != nullptr);
+	assert(controlMidi != nullptr);
+	assert(displayContext != nullptr);
 	///////////////////////////////////////////////INPUTS
 	///////////////////processing the hardware interface
 	
@@ -111,8 +123,10 @@ void Controller::processBlockwise(){
 	
 
 	/////////////////processing Midi
-	while(keyMidi->getParser()->numAvailableMessages() > 0) {
-        IMidiChannelMessage* kmMessage = keyMidi->getParser()->getNextChannelMessage();
+	IMidiParser* keyParser = keyMidi->getParser();
+	assert(keyParser != nullptr);
+	while(keyParser->numAvailableMessages() > 0) {
+        IMidiChannelMessage* kmMessage = keyParser->getNextChannelMessage();
 #ifdef DEBUG_BUILD
         kmMessage->prettyPrint();
 #endif
@@ -123,8 +137,10 @@ void Controller::processBlockwise(){
         }
     }
     
-    while(controlMidi->getParser()->numAvailableMessages() > 0) {
-    	IMidiChannelMessage* cmMessage = controlMidi->getParser()->getNextChannelMessage();
+    IMidiParser* controlParser = controlMidi->getParser();
+    assert(controlParser != nullptr);
+    while(controlParser->numAvailableMessages() > 0) {
+    	IMidiChannelMessage* cmMessage = controlParser->getNextChannelMessage();
 #ifdef DEBUG_BUILD
     	cmMessage->prettyPrint();
 #endif
@@ -155,6 +171,7 @@ void Controller::stateSwitch(int indexShift){
 }
 
 void Controller::setDisplay(){
+	assert(displayContext != nullptr);
 	//by default UIState::General display
 	std::vector<std::vector<std::string>> lines= {{"bpm: " + std::to_string(bpm),
 					  "inst: " + currentInstrumentString,

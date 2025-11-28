@@ -1,8 +1,10 @@
 #include "../include/Button.h"
+#include <cassert>
 
 int BLOCKS_BEFORE_NEXT_PRESS = 250/16;
 int BLOCKS_TO_PRESSED_HOLD = 2700;
 void Button::processBlockwise(){
+	assert(context != nullptr);
 	buttonPressed = false;
 	inactiveCounter++;
 	oldInputPinState = inputPinState;

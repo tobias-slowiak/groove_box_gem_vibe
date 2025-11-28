@@ -1,6 +1,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <cassert>
 //test
 #include "../include/BasicUtilities.h"
 #include "../include/Potentiometer.h"
@@ -43,11 +44,24 @@ void Potentiometer::processBlockwise() {
 	if(reverse) mappedValue = 1.0f - mappedValue;
 	mappedValue = clamp(mappedValue, 0.0f, 1.0f);
 
-	lastRawValues.at(2) = lastRawValues.at(1);
-	lastRawValues.at(1) = lastRawValues.at(0);
+	assert(lastRawValues.size() > 1);
+	float previousRawValueOne = lastRawValues.at(1);
+	assert(lastRawValues.size() > 2);
+	lastRawValues.at(2) = previousRawValueOne;
+	assert(lastRawValues.size() > 0);
+	float previousRawValueZero = lastRawValues.at(0);
+	assert(lastRawValues.size() > 1);
+	lastRawValues.at(1) = previousRawValueZero;
+	assert(lastRawValues.size() > 0);
 	lastRawValues.at(0) = mappedValue;
 
-    float medianRaw = median3(lastRawValues.at(0), lastRawValues.at(1), lastRawValues.at(2));
+	assert(lastRawValues.size() > 0);
+	float medianCandidateZero = lastRawValues.at(0);
+	assert(lastRawValues.size() > 1);
+	float medianCandidateOne = lastRawValues.at(1);
+	assert(lastRawValues.size() > 2);
+	float medianCandidateTwo = lastRawValues.at(2);
+    float medianRaw = median3(medianCandidateZero, medianCandidateOne, medianCandidateTwo);
 	filteredValue += a * (medianRaw - filteredValue);
 	filteredValue = clamp(filteredValue, 0.0f, 1.0f);
 
@@ -78,12 +92,14 @@ void Potentiometer::processBlockwise() {
 		lastStep = newStep;
 		reportedValue = quantizedValue;
 		pendingChange = true;
+		/*
 		DEBUG_RT_PRINTF("Potentiometer %d change: step %d value %.3f (filtered %.3f raw %.3f)\n",
 		                pinNumber,
 		                newStep,
 		                reportedValue,
 		                filteredValue,
 		                mappedValue);
+						*/
 	}
 }
 

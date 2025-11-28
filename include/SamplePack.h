@@ -4,6 +4,7 @@
 #include <utility>
 
 class StreamingBuffer;
+using SampleIdentifier = std::pair<int, int>;
 
 
 class SamplePack {
@@ -15,4 +16,8 @@ public:
     
     ResourceManager* resourceManager;
     StreamingBuffer streamingBuffer;
+    std::unordered_map<SampleIdentifier, size_t> availableSamples;
+    std::string samplePackName;
+    std::string samplePackFolderPath;
+    
 };

@@ -5,6 +5,7 @@
 #include<string>
 #include<stdexcept>
 #include<atomic>
+#include <cassert>
 
 #include "IDisplayContext.h"
 
@@ -22,11 +23,14 @@ public:
 	
 	void setLines(std::vector<std::vector<std::string>>lines) override;
 
-	std::string getLine(int displayNumber, int lineNumber) override {return lines.at(displayNumber).at(lineNumber);}
+	std::string getLine(int displayNumber, int lineNumber) override {
+		assert(displayNumber >= 0 && lines.size() > static_cast<size_t>(displayNumber));
+		auto& displayLines = lines.at(displayNumber);
+		assert(lineNumber >= 0 && displayLines.size() > static_cast<size_t>(lineNumber));
+		return displayLines.at(lineNumber);
+	}
 	
 	void setProgress(int displayNumber, float percentage) override;
-	
-	std::atomic<bool>& getUpdateDisplayFlag() override;
 	
 	AuxiliaryTask& getDisplayTask() override;
 	

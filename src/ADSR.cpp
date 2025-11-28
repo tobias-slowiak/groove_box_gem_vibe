@@ -1,7 +1,9 @@
 #include "../include/ADSR.h"
 #include "../include/ResourceManager.h"
-//test
+#include <cassert>
+
 void ADSR::init() {
+	assert(resourceManager != nullptr);
     //TODO: maybe put this into the constructor?
     attackIncrement = (attackTime > 0.0f) ? (1.0f / (attackTime * resourceManager->audioFramesPerSecond)) : 1.0f;
     decayDecrement  = (decayTime  > 0.0f) ? ((1.0f - sustainLevel) / (decayTime * resourceManager->audioFramesPerSecond)) : 1.0f;

@@ -63,16 +63,8 @@ public:
 	std::vector<float>* getTestSampleVector();
 	
 	std::atomic<bool>& getUpdateDisplayFlag();
-
-	std::atomic<bool>& getStreamLoadingFlag();
-
-	std::atomic<bool>& getStreamStartsFlag();
 	
 	void setUpdateDisplayFlag(bool val);
-
-	void setStreamLoadingFlag(bool val);
-	
-	void setStreamStartsFlag(bool val);
 	
 	///////////////////////////////PUBLIC VARIABLES
 	int audioFramesPerAnalogFrame;
@@ -83,6 +75,7 @@ public:
 	float LowerDBLimit = -60.0f;
 	float UpperDBLimit = 20.0f;
 	float UpperLimitInputGain = 20.0;
+	bool inMonoMode = true; //Maybe someday implement stereo
 	bool interfaceConnected = false;
 	bool keyMidiConnected = false;
 	bool controlMidiConnected = false;
@@ -106,6 +99,4 @@ private:
 	std::vector<float>* testSample = nullptr;
 	int testSampleSize = 0;
 	std::atomic<bool> updateDisplayFlag;
-	std::atomic<bool> streamLoadingFlag;
-	std::atomic<bool> streamStartsFlag;
 };

@@ -1,4 +1,5 @@
 #include <Bela.h>
+#include <cassert>
 
 #include "../include/ModeManager.h"
 #include "../include/ResourceManager.h"
@@ -11,6 +12,7 @@
 #include "../include/Voices.h"
 
 ModeManager::ModeManager(ResourceManager* resourceManager): resourceManager(resourceManager) {
+	assert(resourceManager != nullptr);
 	context = resourceManager->getBelaContext();
 	mode = Mode::TopMenu;
 	testAll = false;
@@ -32,6 +34,9 @@ ModeManager::ModeManager(ResourceManager* resourceManager): resourceManager(reso
 }
 
 void ModeManager::render(BelaContext *context, ResourceManager* resourceManager){
+	assert(context != nullptr);
+	assert(resourceManager != nullptr);
+	assert(this->resourceManager != nullptr);
 	if(testAll){
 		if(currentTestDone){
 			currentTestDone = false;
@@ -43,6 +48,7 @@ void ModeManager::render(BelaContext *context, ResourceManager* resourceManager)
 				mode = Mode::TopMenu;
 				testAll = false;
 			} else {
+				assert(modeNumber >= 0 && modeNames.size() > static_cast<size_t>(modeNumber));
 				rt_printf("Running Test %s\n\n", modeNames.at(modeNumber).c_str());
 				mode = (Mode)modeNumber;
 			}
@@ -97,6 +103,10 @@ void ModeManager::render(BelaContext *context, ResourceManager* resourceManager)
 }
 
 void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceManager){
+	assert(context != nullptr);
+	assert(ResourceManager != nullptr);
+	assert(resourceManager != nullptr);
+	
 	IDisplayContext* display = resourceManager->getDisplayContext();
 	BelaInterface* interface = resourceManager->getBelaInterface();
 	
@@ -104,7 +114,9 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceM
 	interface->processBlockwise();
 	
 	static Mode selectionMode = Mode::TopMenu;
-	std::string modeName = modeNames.at((int)selectionMode);
+	const int selectionIndex = static_cast<int>(selectionMode);
+	assert(selectionIndex >= 0 && modeNames.size() > static_cast<size_t>(selectionIndex));
+	std::string modeName = modeNames.at(selectionIndex);
 	display->setLines(0, 0, "Run Mode", modeName.c_str(), "push to ", "continue");
 	
 	while(interface->numAvailableMessages() > 0){
@@ -122,7 +134,9 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceM
 					testAll = true;
 					mode = Mode::BelaInterfaceTest;
 					rt_printf("Running All Tests\n\n");
-					rt_printf("Running Test %s\n\n", modeNames.at((int)mode).c_str());
+					const int modeIndex = static_cast<int>(mode);
+					assert(modeIndex >= 0 && modeNames.size() > static_cast<size_t>(modeIndex));
+					rt_printf("Running Test %s\n\n", modeNames.at(modeIndex).c_str());
 				}
 			}
 		}
@@ -130,6 +144,8 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceM
 }
 
 void ModeManager::renderNormal(BelaContext *context, ResourceManager* resourceManager){
+	assert(context != nullptr);
+	assert(resourceManager != nullptr);
 	for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++) {
 		for(unsigned int ch = 0; ch < context->audioInChannels; ch++) {
             audioWrite(context, n, ch, 0.0f);
@@ -139,6 +155,7 @@ void ModeManager::renderNormal(BelaContext *context, ResourceManager* resourceMa
 
 
 void ModeManager::modeShift(int indexShift, Mode* mode){
+	assert(mode != nullptr);
 	if(indexShift != 1 && indexShift != -1) throw std::runtime_error("modeShift() used with indexshift unequal 1 or -1");
 	int modeIndex = ((int)(*mode) + indexShift) % (int)Mode::COUNT;
 	if(modeIndex < 0) modeIndex += (int)Mode::COUNT;
@@ -147,9 +164,11 @@ void ModeManager::modeShift(int indexShift, Mode* mode){
 }
 
 bool ModeManager::secondsElapsed(int blocksElapsed, float seconds){
+	assert(resourceManager != nullptr);
 	return blocksElapsed  == (int)(seconds * resourceManager->blocksPerSecond);
 }
 
 float ModeManager::blocksToSeconds(int blocksElapsed){
+	assert(resourceManager != nullptr);
 	return (float)blocksElapsed / (float)resourceManager->blocksPerSecond;
 }

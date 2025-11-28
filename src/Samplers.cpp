@@ -1,5 +1,6 @@
 #include <Bela.h>
 #include <vector>
+#include <cassert>
 
 #include "../include/Samplers.h"
 
@@ -22,8 +23,10 @@ void Sampler::startRecord() {
 bool Sampler::isRecording() {return recording;}
 
 void Sampler::recordFrame(float in){
-    if(bufferReadIndex < numberOfFrames)
+    if(bufferReadIndex < numberOfFrames){
+        assert(samplerBuffer.size() > static_cast<size_t>(bufferReadIndex));
         samplerBuffer.at(bufferReadIndex++) = in;
+    }
     else
         recording = false;
 }
@@ -38,33 +41,57 @@ void Sampler::newSlice(){
 int Sampler::getNrSlices() {return numberOfSlices;}
 
 std::pair<float*, int> Sampler::getSampleSlice(int sliceIndex) {
-	return {samplerBuffer.data() + starts.at(sliceIndex), ends.at(sliceIndex) - starts.at(sliceIndex)};
+	assert(sliceIndex >= 0 && starts.size() > static_cast<size_t>(sliceIndex));
+	int sliceStart = starts.at(sliceIndex);
+	assert(ends.size() > static_cast<size_t>(sliceIndex));
+	int sliceEnd = ends.at(sliceIndex);
+	assert(sliceStart >= 0);
+	assert(sliceEnd >= sliceStart);
+	assert(samplerBuffer.size() > static_cast<size_t>(sliceStart));
+	assert(samplerBuffer.size() >= static_cast<size_t>(sliceEnd));
+	return {samplerBuffer.data() + sliceStart, sliceEnd - sliceStart};
 }
 
 void Sampler::setStart(int sliceIndex, float percentage) {
 	int newStart = percentage * numberOfFrames;
-	if(sliceIndex < numberOfSlices)
-		if(newStart < ends.at(sliceIndex))
+	assert(newStart >= 0);
+	assert(newStart < numberOfFrames);
+	if(sliceIndex < numberOfSlices){
+		assert(sliceIndex >= 0 && ends.size() > static_cast<size_t>(sliceIndex));
+		if(newStart < ends.at(sliceIndex)){
+			assert(starts.size() > static_cast<size_t>(sliceIndex));
 			starts.at(sliceIndex) = newStart;
+		}
+	}
 }
 
 void Sampler::setEnd(int sliceIndex, float percentage) {
 	int newEnd = percentage * numberOfFrames;
-	if(sliceIndex < numberOfSlices)
-		if(newEnd > starts.at(sliceIndex))
+	assert(newEnd >= 0);
+	assert(newEnd <= numberOfFrames);
+	if(sliceIndex < numberOfSlices){
+		assert(sliceIndex >= 0 && starts.size() > static_cast<size_t>(sliceIndex));
+		if(newEnd > starts.at(sliceIndex)){
+			assert(ends.size() > static_cast<size_t>(sliceIndex));
 			ends.at(sliceIndex) = newEnd;
+		}
+	}
 }
 
 float Sampler::getFrame(int index) {
-	if(index < numberOfFrames)
+	if(index < numberOfFrames){
+		assert(samplerBuffer.size() > static_cast<size_t>(index));
 		return samplerBuffer.at(index);
+	}
 	return 0.0f;
 }
 
 float Sampler::getPlaybackRate(int note) {
 	int sliceIndex = noteToSliceIndex(note);
-	if(sliceIndex >= 0 && sliceIndex < playbackRates.size())
+	if(sliceIndex >= 0 && sliceIndex < playbackRates.size()){
+		assert(playbackRates.size() > static_cast<size_t>(sliceIndex));
 		return playbackRates.at(sliceIndex);
+	}
 	else
 		return 1.0f;
 }
@@ -77,10 +104,12 @@ void Samplers::newSampler(float timeInSeconds) {
 }
 
 void Samplers::startRecord(int samplerIndex) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	samplers.at(samplerIndex).startRecord();
 }
 
 bool Samplers::isRecording(int samplerIndex) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	return samplers.at(samplerIndex).isRecording();
 }
 
@@ -91,28 +120,34 @@ void Samplers::process(float inFrame) {
 }
 
 void Samplers::newSlice(int samplerIndex) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	samplers.at(samplerIndex).newSlice();
 }
 
 int Samplers::getNrSlices(int samplerIndex) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	return samplers.at(samplerIndex).getNrSlices();
 }
 
 std::pair<float*, int> Samplers::getSampleSlice(int samplerIndex, int sliceIndex) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	return samplers.at(samplerIndex).getSampleSlice(sliceIndex);
 }
 
 void Samplers::setStart(int samplerIndex, int sliceIndex, float percentage) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	samplers.at(samplerIndex).setStart(sliceIndex, percentage);
 }
 void Samplers::setEnd(int samplerIndex, int sliceIndex, float percentage) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	samplers.at(samplerIndex).setEnd(sliceIndex, percentage);
 }
 float Samplers::getFrame(int samplerIndex, int index) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	return samplers.at(samplerIndex).getFrame(index);
 }
 
 float Samplers::getPlaybackRate(int samplerIndex, int note) {
+	assert(samplerIndex >= 0 && samplers.size() > static_cast<size_t>(samplerIndex));
 	return samplers.at(samplerIndex).getFrame(note);
 }
-

@@ -210,10 +210,14 @@ Write-Host "[bela] Copied $($copied.Count) file(s); removed $($removed.Count)."
 $cflags = "-I/root/Bela/projects/u8g2/csrc"
 $cppflags = "-I/root/Bela/projects/u8g2/csrc"
 if ($Debug) {
-    $cflags += " -DDEBUG_BUILD"
-    $cppflags += " -DDEBUG_BUILD"
+    $cflags += " -DDEBUG_BUILD -UNDEBUG"
+    $cppflags += " -DDEBUG_BUILD -UNDEBUG"
 }
+
 $makeCmd = "cd '$MakeDir' && env CFLAGS='$cflags' CPPFLAGS='$cppflags' make PROJECT='$Project' $Target"
+if ($Debug) {
+    $makeCmd += " debug"
+}
 Invoke-Ssh -Command $makeCmd -ForceTty
 
 Write-Host "[bela] Done."

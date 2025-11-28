@@ -43,7 +43,7 @@ If you modify pin or device mappings, update `include/DeviceMap.h` and note the 
 - **Do not resurrect deleted display drivers.** If you need extra controllers, confirm with the user first.
 - **Keep audio paths real-time safe.** Avoid heap allocations or heavy logging inside `processBlockwise()` functions.
 - **ModeManager tests** provide a quick sanity check. Running the project on Bela and selecting `AllTest` helps validate broader changes.
-- **Display updates** require toggling `ResourceManager::getUpdateDisplayFlag()`; follow existing patterns in `DisplayContextReal`.
+- **Display updates** are queued through `DisplayContextReal`’s internal job counters; just call the provided setters (`setLines`, `setProgress`, etc.) and let the class schedule the auxiliary task (no manual flag toggles needed).
 - **MIDI writes** from the controller are currently commented out. Verify hardware before re-enabling.
 
 ---

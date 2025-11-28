@@ -2,6 +2,7 @@
 #include <string>
 #include <queue>
 #include <math.h>
+#include <cassert>
 //test
 #include "../include/BelaInterface.h"
 #include "../include/BasicUtilities.h"
@@ -27,8 +28,10 @@ void InterfaceMessage::prettyPrint(){
 		if(event == RotaryEncoderEvent::Push) e = "push";
 		rt_printf("RotEncSignal: %d, %s\n", id, e.c_str());
 	}
+	/*
 	if(type == InterfaceMessageType::PotSignal)
 		rt_printf("Potti signal: %d, %f\n", id, value);
+		*/
 }
 
 void BelaInterface::printPotentiometerValues(){
@@ -40,13 +43,17 @@ void BelaInterface::printPotentiometerValues(){
 }
 
 void BelaInterface::newEncoder(BelaContext* context, int index, int pinA, int pinB, int pinS){
+	assert(context != nullptr);
 	rotaryEncoders.push_back(RotaryEncoder(context, index, pinA, pinB, pinS));
 	DEBUG_RT_PRINTF("  Rotary encoder %d pins A:%d B:%d S:%d\n", index, pinA, pinB, pinS);
 }
 
 BelaInterface::BelaInterface(ResourceManager* resourceManager): resourceManager(resourceManager) {
+	assert(resourceManager != nullptr);
 	DeviceMap* dm = resourceManager->getDeviceMap();
+	assert(dm != nullptr);
 	BelaContext* context = resourceManager->getBelaContext();
+	assert(context != nullptr);
 	DEBUG_RT_PRINTF("BelaInterface init: buttons=%zu encoders=%d pottis=%d\n",
 	                dm->buttonPins.size(),
 	                dm->numberOfRotEncs,
@@ -56,7 +63,15 @@ BelaInterface::BelaInterface(ResourceManager* resourceManager): resourceManager(
 		DEBUG_RT_PRINTF("  Button pin %d registered\n", pin);
 	}
 	for(int i = 0; i < dm->numberOfRotEncs; i++){
-		this->newEncoder(context, i, dm->rotEncPins.at(i).at(0), dm->rotEncPins.at(i).at(1), dm->rotEncPins.at(i).at(2));
+		assert(dm->rotEncPins.size() > static_cast<size_t>(i));
+		auto& encoderPins = dm->rotEncPins.at(i);
+		assert(encoderPins.size() > 0);
+		int pinA = encoderPins.at(0);
+		assert(encoderPins.size() > 1);
+		int pinB = encoderPins.at(1);
+		assert(encoderPins.size() > 2);
+		int pinS = encoderPins.at(2);
+		this->newEncoder(context, i, pinA, pinB, pinS);
 	}
 	for(int i = 0; i < dm->numberOfPotentiometers; i++){
 		potentiometers.push_back(Potentiometer(context, dm->reversePottis, i, 20.0f));
@@ -64,6 +79,7 @@ BelaInterface::BelaInterface(ResourceManager* resourceManager): resourceManager(
 }
 
 void BelaInterface::processBlockwise(){
+	assert(resourceManager != nullptr);
 
 	for(auto& button: buttons){
 		button.processBlockwise();
@@ -89,9 +105,11 @@ void BelaInterface::processBlockwise(){
 	for(auto& potentiometer: potentiometers){
 		potentiometer.processBlockwise();
 		if(potentiometer.hasChanged()){
+			/*
 			DEBUG_RT_PRINTF("Potentiometer %d queued value %.3f\n",
 			                potentiometer.getPin(),
 			                potentiometer.getValue());
+							*/
 			messages.push(InterfaceMessage(InterfaceMessageType::PotSignal, potentiometer.getPin(), potentiometer.getValue()));
 		}
 	}

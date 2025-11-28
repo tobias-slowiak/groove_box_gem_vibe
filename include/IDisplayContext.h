@@ -21,13 +21,10 @@ public:
 	
 	virtual void setProgress(int, float) = 0;
 	
-	virtual std::atomic<bool>& getUpdateDisplayFlag() = 0;
-	
 	virtual AuxiliaryTask& getDisplayTask() = 0;
 	
 	virtual void renderDisplay() = 0;
 	
 };
-
 
 

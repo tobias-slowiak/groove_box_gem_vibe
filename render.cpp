@@ -1,8 +1,15 @@
 #include <Bela.h>
 #include <libraries/Midi/Midi.h>
+#include <cassert>
 
 #include "include/ResourceManager.h"
 #include "include/ModeManager.h"
+
+
+//TODO: put mount of SD card in the run on boot.
+
+//TODO: dieses deamon und restart in startup (warum muss das immer gemacht werden?)
+
 //the following include can be re/decommented to change sth in the render.cpp to force recompilation if it doesnt automatically happen
 //#include <math.h>
 
@@ -43,6 +50,7 @@ ResourceManager* resourceManager;
 
 bool setup(BelaContext *context, void *userData)
 {
+	assert(context != nullptr);
 	resourceManager = new ResourceManager();
 	resourceManager->setup(context);
 	printf("setup done\n");
@@ -51,10 +59,14 @@ bool setup(BelaContext *context, void *userData)
 
 void render(BelaContext *context, void *userData)
 {
+	assert(context != nullptr);
+	assert(resourceManager != nullptr);
 	resourceManager->getModeManager()->render(context, resourceManager);
 }
 
 void cleanup(BelaContext *context, void *userData)
 {
+	assert(context != nullptr);
+	assert(resourceManager != nullptr);
 	resourceManager->cleanup(context);
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <stdexcept>
+#include <cassert>
 
 #include "ResourceManager.h"
 //I had a version where the loopers were not stored in one big buffer and then I needed a thread to initialize the looper with the big vector, the function doing this is also in midi_keyboard_6_16_25
@@ -58,23 +59,38 @@ public:
 	
 	int getNrLoopers(){return loopers.size();}
 
-	bool isPlaying(int looperIndex){return loopers.at(looperIndex).isPlaying();}
+	bool isPlaying(int looperIndex){
+		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
+		return loopers.at(looperIndex).isPlaying();
+	}
 	
-	bool isEmpty(int looperIndex){return loopers.at(looperIndex).isEmpty();}
+	bool isEmpty(int looperIndex){
+		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
+		return loopers.at(looperIndex).isEmpty();
+	}
 	
-	float getProgress(int looperIndex){return loopers.at(looperIndex).getProgress();}
+	float getProgress(int looperIndex){
+		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
+		return loopers.at(looperIndex).getProgress();
+	}
 
 	void processBlockwise(std::vector<float>& blockFrames);
 	
 	bool isRecording();
 	
-	bool isRecording(int looperIndex){return loopers.at(looperIndex).isRecording();}
+	bool isRecording(int looperIndex){
+		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
+		return loopers.at(looperIndex).isRecording();
+	}
 	
 	bool toggleRecord(int looperIndex);
 	
 	bool togglePlay(int looperIndex);
 	
-	void eraseLoop(int looperIndex){loopers.at(looperIndex).eraseLoop();}
+	void eraseLoop(int looperIndex){
+		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
+		loopers.at(looperIndex).eraseLoop();
+	}
 	
 private:
 	int blockSize;
@@ -83,6 +99,4 @@ private:
 	std::vector<Looper> loopers;
 	int numberOfLoopers;
 };
-
-
 

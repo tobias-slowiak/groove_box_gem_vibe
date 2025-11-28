@@ -1,3 +1,56 @@
+# ACTUAL README WRITTEN BY ME
+
+## Compiling and running.
+The deplay_to_bela.ps1 file copies files over, compiles and runs. instructions are there in the beginning too with:
+
+<#WARNING:
+    for some reason the first make run of a session has to be run from the browser IDE
+#>
+<# Usage:
+   (Run from a PowerShell prompt, e.g. PS C:\Users\tobia>)
+   powershell -ExecutionPolicy Bypass -File "\\wsl`$\Ubuntu\home\tobi\groove_box\deploy_to_bela.ps1" [-Debug]
+#>
+
+<#Warning:
+All the u8x2 files have been compiled and are there as .o files in the build folder. if the build folder is deleted, the u8g2 files need to be recompiled.
+For this the u8g2 folder has to be copied to the project folder, after that it can be deleted again. i dont know why it does not compile the 
+files when outside the project folder even though the folder is specified in the make parameters.
+#>
+
+## Looging when running on boot
+
+systemd is used to log everything when running on boot. all the output is stored in /opt/Bela/logs/instrument.log so I can look at error codes/failed asserts/etc. after using it in standalone mode.s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# RANDOM CODEX README
+
+
 # Instrument Platform (Bela)
 
 This repository contains the software stack for a custom performance instrument built around a **Bela** embedded audio platform.  

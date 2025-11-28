@@ -2,8 +2,11 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <atomic>
+#include <cstdint>
 #include <libraries/AudioFile/AudioFile.h>
+#include <cassert>
 
 //we have 3 different types of indices: chunkIndex (within the sample it has chunk number 0 (start) 1 2 ...)
 // then we have the chunkStartIndex (which is an actual Index in the big buffer) and marks the first index of the chunk
@@ -12,6 +15,29 @@
 
 //std::pair<int,int> sampleIdentifier is either (key, velocity) or (loopIndex, barIndex) or (samplerIndex, samplerSlice)
 
+
+
+//TODO: make activeREquests an unordered_map for better performance. For this the definition
+//of Request needs to be moved above StreamingBuffer or in it's own header.
+//  in general make everything which is map an unordered_map if possible.
+
+//TODO : make the flag into std::atomic<uint32_t> startJobId{0}; std::atomic<uint32_t> startJobDone{0};
+// to avoid locking. codex said:
+/*
+When the audio thread queues a starts job, do const auto job = startJobId.fetch_add(1, std::memory_order_relaxed) + 1; pendingStartJob = job;.
+The worker copies pendingStartJob into startJobDone.store(job, std::memory_order_release);.
+ModeManager polls startJobDone.load(std::memory_order_acquire) and compares against the job id it observed when it queued the work. No chance of missing an edge, no need for extra delays, and you could extend the same scheme to chunk loads.
+*/
+
+/*
+TODO: compose into smaller chunks:
+codex sais the responsibilities are:
+a managing big buffer
+b chunk bookkeeping
+c managing flags and tasks
+d resource catalog (filenames, avaliable samples, ...)
+
+*/
 class ResourceManager;
 class Request;
 
@@ -23,7 +49,10 @@ public:
 
     float* getData(){ return buffer.data();}
 
-    float at(size_t index){ return buffer.at(index);}
+    float at(size_t index){
+        assert(buffer.size() > index);
+        return buffer.at(index);
+    }
 
     void initForFolder(std::string folderPath, size_t chunkLength = kDefaultChunkLength);
 
@@ -37,6 +66,8 @@ public:
 
     int getRequestSampleLength(size_t requestId);
 
+    std::vector<std::pair<int,int>>& getAvailableSamples() {return availableSamples;}
+
     void streamStarts();
 
     void streamChunks();
@@ -49,9 +80,30 @@ public:
 
     void printInfo() const;
 
+    bool isStreaming() const;
+
+    uint32_t getStartJobsIssued() const;
+    uint32_t getStartJobsCompleted() const;
+    uint32_t getChunkJobsIssued() const;
+    uint32_t getChunkJobsCompleted() const;
+
 private:
 
     friend class Request;
+    
+    enum class StreamJobKind : uint8_t {
+        None = 0,
+        Starts,
+        Chunks
+    };
+
+    enum class ScheduleStatus {
+        Scheduled,
+        Busy,
+        Error
+    };
+
+    ScheduleStatus scheduleStreamTask(StreamJobKind kind);
 
     ResourceManager* resourceManager;
     std::string bufferName; //for example KeySamplePackBuffer or LoopersBuffer
@@ -82,16 +134,21 @@ private:
 
     static constexpr size_t kDefaultChunkLength = 44100 * 0.2;
     size_t chunkLength = 44100 * 0.2; // in samples
+
+    std::atomic<uint32_t> startJobsIssued{0};
+    std::atomic<uint32_t> startJobsCompleted{0};
+    std::atomic<uint32_t> chunkJobsIssued{0};
+    std::atomic<uint32_t> chunkJobsCompleted{0};
+    std::atomic<uint32_t> activeStartJobId{0};
+    std::atomic<uint32_t> activeChunkJobId{0};
+    std::atomic<StreamJobKind> jobInFlight{StreamJobKind::None};
 };
 
 
 class Request{
 public:
     Request() {}
-    Request(ResourceManager* resourceManager, std::pair<int,int> sampleIdentifier, StreamingBuffer* buffer, size_t requestId):
-                requestId(requestId), resourceManager(resourceManager),
-                sampleIdentifier(sampleIdentifier), buffer(buffer),
-                chunkStartIndex(buffer->chunkStartIndices[sampleIdentifier].at(0)){}
+    Request(ResourceManager* resourceManager, std::pair<int,int> sampleIdentifier, StreamingBuffer* buffer, size_t requestId);
 
     float getNextSample();
 
@@ -108,5 +165,9 @@ private:
     StreamingBuffer* buffer;
     size_t readIndexInChunk = 0;
     size_t chunkIndex = 0;
-    size_t chunkStartIndex;
+    size_t chunkStartIndex = 0;
+
+    std::vector<size_t>* chunkStartIndices;
+    size_t sampleLength;
+    size_t chunkLength;
 };
