@@ -39,7 +39,7 @@ void DisplayContextFake::setProgress(int displayNumber, float percentage)  {
 	this->renderDisplay();
 }
 
-AuxiliaryTask& DisplayContextFake::getDisplayTask()  {
+TaskWrapper& DisplayContextFake::getDisplayTask()  {
 	rt_printf("ERROR: trying to getDisplayTask() pointer, but here we have a fake display context\n");
 	throw std::runtime_error("ERROR: trying to getDisplayTask() pointer, but here we have a fake display context\n");
 }

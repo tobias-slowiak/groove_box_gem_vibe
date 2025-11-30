@@ -1,173 +1,314 @@
-#include <Bela.h>
+#pragma once
+
+#include <limits>
+#include <libraries/sndfile/sndfile.h>
 #include <vector>
-#include <string>
-#include <map>
-#include <unordered_map>
 #include <atomic>
+#include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
+#include <stdexcept>
+#include <functional>
 #include <cstdint>
-#include <libraries/AudioFile/AudioFile.h>
 #include <cassert>
+#include <string>
+#include <utility>
 
-//we have 3 different types of indices: chunkIndex (within the sample it has chunk number 0 (start) 1 2 ...)
-// then we have the chunkStartIndex (which is an actual Index in the big buffer) and marks the first index of the chunk
-// and we have the globalChunkIndex (which is the index of the chunk in the big buffer. 0 would be the first chunk in
-//  the streamed chunk area, 1 the second, etc.
+#include <Bela.h>
+#include <libraries/AudioFile/AudioFile.h>
+#include "../include/DebugLog.h"
+#include "../include/ResourceManager.h"
 
-//std::pair<int,int> sampleIdentifier is either (key, velocity) or (loopIndex, barIndex) or (samplerIndex, samplerSlice)
+class StreamingBuffer;
+class StreamingBufferIterator;
+
+//AI Generated hash - check if this works.
+// Hash for SampleIdentifier (pair<int,int>) tailored to expected 0–256 range
+using SampleIdentifier = std::pair<int, int>;
+
+namespace std {
+template <>
+struct hash<SampleIdentifier> {
+    size_t operator()(const SampleIdentifier& s) const noexcept {
+        return (static_cast<size_t>(s.first & 0x1ff) << 9) ^ static_cast<size_t>(s.second & 0x1ff);
+    }
+};
+} // namespace std
 
 
+//I might get race conditions here. it would be better to have an array of mutex locks for the states.
+struct ChunkState {
+    std::atomic<int> ownerKey{-1};
+    std::atomic<int> ownerVelocity{-1};
+    std::atomic<int> chunkIndex{-1};
+    std::atomic<bool> writeProtected{false};
 
-//TODO: make activeREquests an unordered_map for better performance. For this the definition
-//of Request needs to be moved above StreamingBuffer or in it's own header.
-//  in general make everything which is map an unordered_map if possible.
+    void set(SampleIdentifier sampleIdentifier, int chunkIndex, bool writeProtected);
+};
+static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
+static constexpr float SAMPLE_NOT_LOADED_VALUE = std::numeric_limits<float>::lowest() + 1.0f;
+static constexpr int CHUNK_INVALID = std::numeric_limits<int>::max() - 1;
+static constexpr int ITERATOR_INVALID = std::numeric_limits<int>::max() - 2;
 
-//TODO : make the flag into std::atomic<uint32_t> startJobId{0}; std::atomic<uint32_t> startJobDone{0};
-// to avoid locking. codex said:
-/*
-When the audio thread queues a starts job, do const auto job = startJobId.fetch_add(1, std::memory_order_relaxed) + 1; pendingStartJob = job;.
-The worker copies pendingStartJob into startJobDone.store(job, std::memory_order_release);.
-ModeManager polls startJobDone.load(std::memory_order_acquire) and compares against the job id it observed when it queued the work. No chance of missing an edge, no need for extra delays, and you could extend the same scheme to chunk loads.
-*/
+enum class StreamingMessageType : uint8_t { ChunkReady,
+    InvalidatedChunk,
+    StreamChunk, 
+    AssignChunk, 
+    InitializeSample,
+    Clear, 
+    FlushInfo, 
+    FlushChunk, 
+    FlushComplete
+};
 
-/*
-TODO: compose into smaller chunks:
-codex sais the responsibilities are:
-a managing big buffer
-b chunk bookkeeping
-c managing flags and tasks
-d resource catalog (filenames, avaliable samples, ...)
+struct StreamingMessage {
+    StreamingMessageType type;
+    SampleIdentifier sampleIdentifier;
+    int chunkIndex;
+    int chunkIndexInBuffer;
+};
 
-*/
-class ResourceManager;
-class Request;
-
-class StreamingBuffer {
+class StreamingMessageQueue {
 public:
 
-    StreamingBuffer(ResourceManager* resourceManager,
-        size_t size, std::string bufferName, std::string folderPath);
+    StreamingMessageQueue() {
+        assert(messages.size() > 0  && "caught default smq ctor which should never trigger");}
+    
+    StreamingMessageQueue(size_t capacity): capacity(capacity){
+        assert(capacity > 0 && "why get 0 capacity on messagequeue?");
+        messages.resize(capacity);
+        assert(messages.size() > 0 && "what smq fuck?");}
+    
+    bool push(StreamingMessage value);
 
-    float* getData(){ return buffer.data();}
+    bool pop(StreamingMessage& out);
 
-    float at(size_t index){
-        assert(buffer.size() > index);
-        return buffer.at(index);
-    }
+private:
+    size_t capacity;
+    std::vector<StreamingMessage> messages;
+    std::atomic<size_t> tail{0};
+    std::atomic<size_t> head{0}; // producer-only
+};
 
-    void initForFolder(std::string folderPath, size_t chunkLength = kDefaultChunkLength);
+enum class SBIType {
+    None,
+    Read,
+    Write
+};
 
-    size_t requestSample(std::pair<int,int> sampleIdentifier); // returns the requestId
+class ElementProxy {
+    public:
+        ElementProxy(StreamingBufferIterator& iterator) : iterator(iterator) {}
+        ElementProxy& operator=(float value);
+        operator float() const;
+    private:
+        friend class StreamingBufferIterator;
+        StreamingBufferIterator& iterator;
+};
+
+//TODO: make them stop if mutate task in flight?
+class StreamingBufferIterator {
+    public:
+        ElementProxy operator*(){return ElementProxy(*this);}
+
+        StreamingBufferIterator(StreamingBuffer* parent);
+
+        StreamingBufferIterator(SampleIdentifier sampleIdentifier, size_t index, StreamingBuffer* parent, std::vector<int>* chunkIndicesInBuffer, SBIType type);
+
+        StreamingBufferIterator& operator++();      // pre-increment
+
+        StreamingBufferIterator operator++(int);    // post-increment
+
+        void set(SampleIdentifier sampleIdentifier, size_t index, StreamingBuffer* parent, std::vector<int>* chunkIndicesInBuffer, SBIType type);
+
+        void initialize();
+
+        SampleIdentifier sampleIdentifier;
+
+    private:
+        friend class StreamingBuffer;
+        friend class AudioStreamer;
+        friend class ElementProxy;
+
+        size_t index;
+        StreamingBuffer* parent;
+        std::vector<int>* chunkIndicesInBuffer;
+        SBIType type = SBIType::None;
+        int chunkIndex;
+        size_t indexInChunk;
+        int chunkIndexInBuffer;
+        float* chunkStartPtr;
+        float* data;
+};
+
+
+void streamOnThread(void* arg);
+void flushOnThread(void* arg);
+void mutateOnThread(void* arg);
+
+class AudioStreamer{
+public:
+    //Audio thread only 
+    AudioStreamer(StreamingBuffer& streamingBuffer);
+
+    void streamChunk(SampleIdentifier sampleIdentifier, int chunkIndex, int chunkIndexInBuffer);
+
+    void streamFromDisk(SampleIdentifier sampleIdentifier);
+
+    void streamStartFromDisk(SampleIdentifier sampleIdentifier);
+
+    void flushToDisk(SampleIdentifier sampleIdentifier);
 
     void processBlockwise();
 
-    void eraseSample(std::pair<int,int> sampleIdentifier);
+    //Stream Thread only
 
-    float getNextSample(size_t requestId);
+    void stream();
 
-    int getRequestSampleLength(size_t requestId);
-
-    std::vector<std::pair<int,int>>& getAvailableSamples() {return availableSamples;}
-
-    void streamStarts();
-
-    void streamChunks();
-
-    void streamSamples();
-
-    void clearStreamingChunks();
-
-    void clearContainers();
-
-    void printInfo() const;
-
-    bool isStreaming() const;
-
-    uint32_t getStartJobsIssued() const;
-    uint32_t getStartJobsCompleted() const;
-    uint32_t getChunkJobsIssued() const;
-    uint32_t getChunkJobsCompleted() const;
+    //Flush Thread only
+    void flush();
 
 private:
-
-    friend class Request;
-    
-    enum class StreamJobKind : uint8_t {
-        None = 0,
-        Starts,
-        Chunks
-    };
-
     enum class ScheduleStatus {
         Scheduled,
         Busy,
         Error
     };
-
-    ScheduleStatus scheduleStreamTask(StreamJobKind kind);
-
-    ResourceManager* resourceManager;
-    std::string bufferName; //for example KeySamplePackBuffer or LoopersBuffer
-    std::string folderPath;
-
-    AuxiliaryTask streamSamplesTask;
-    int sampleStreamPrio = 50;
-    bool streamStartsNeedsScheduling = false;
-    bool streamChunksNeedsScheduling = false;
-
-    std::vector<float> buffer;
-    size_t availableBufferLength; //largest possible multiple of chunkLength is available
-    size_t streamedChunkAreaStartIndex; //seperates buffer from startChunks to streamedChunks.
-
-    std::map<std::pair<int,int>, std::string> filenames;
-    std::vector<std::pair<int,int>> availableSamples;
-    std::vector<std::pair<int,int>> pendingSamplesToLoad;
-    std::vector<std::pair<int,int>> fullyLoadedSamples;
-    std::map<std::pair<int,int>, size_t> sampleLengths;
-    std::vector<std::pair<int,int>> streamedChunkOwnership;
-
-    std::map<std::pair<int,int>, std::vector<size_t>> chunkStartIndices;
-
-    std::map<size_t, Request> activeRequests;
-    size_t currentRequestId = 0;
+    friend class StreamingBuffer;
+    friend class StreamingBufferIterator;
+    StreamingBuffer& parent;
     
-    std::map<std::pair<int,int>, size_t> sdCardReadIndices;
+    //thread schedule flags
+    bool streamNeedsScheduling = false;
+    bool flushNeedsScheduling = false;
 
-    static constexpr size_t kDefaultChunkLength = 44100 * 0.2;
-    size_t chunkLength = 44100 * 0.2; // in samples
+    //Auxiliary Tasks
+    AuxiliaryTask streamSamplesTask;
+    AuxiliaryTask flushToDiskTask;
+    int streamSamplePrio = 50;
+    int flushToDiskPrio = 20;
+    std::string streamSamplesTaskName;
+    std::string flushToDiskTaskName;
 
-    std::atomic<uint32_t> startJobsIssued{0};
-    std::atomic<uint32_t> startJobsCompleted{0};
-    std::atomic<uint32_t> chunkJobsIssued{0};
-    std::atomic<uint32_t> chunkJobsCompleted{0};
-    std::atomic<uint32_t> activeStartJobId{0};
-    std::atomic<uint32_t> activeChunkJobId{0};
-    std::atomic<StreamJobKind> jobInFlight{StreamJobKind::None};
+    //Messaging between threads
+    static constexpr size_t queueCapacity = 512;
+    StreamingMessageQueue audioToStream{queueCapacity};
+    StreamingMessageQueue audioToFlush{queueCapacity};
+    StreamingMessageQueue streamToAudio{queueCapacity};
+    StreamingMessageQueue flushToAudio{queueCapacity};
+
+    //Stream Thread Only
+    std::unordered_map<SampleIdentifier, std::vector<int>> s_chunkIndicesInBuffer; //synchronize with parent
+    std::vector<float> streamBuffer;
+
+    std::unordered_set<SampleIdentifier> pendingFlushes;
+    //Flush Thread Only
+    std::unordered_map<SampleIdentifier, int> f_numberOfFlushableChunks;
+    std::vector<float> flushBuffer;
+
+    //Job/Task management
+    std::atomic<bool> streamingTaskInFlight{false};
+    std::atomic<bool> flushTaskInFlight{false};
 };
 
-
-class Request{
+class StreamingBuffer {
 public:
-    Request() {}
-    Request(ResourceManager* resourceManager, std::pair<int,int> sampleIdentifier, StreamingBuffer* buffer, size_t requestId);
 
-    float getNextSample();
+    StreamingBuffer(ResourceManager* resourceManager,
+            size_t bufferLengthInFrames,
+            int totalNumberOfIterators,
+            std::string bufferName, std::string folderPath,
+            std::unordered_map<SampleIdentifier, size_t>& availableSamples);
 
-    std::pair<int, int> getSampleIdentifier() {return sampleIdentifier;}
+    ~StreamingBuffer();
+
+    StreamingBufferIterator& begin(SampleIdentifier sampleIdentifier, SBIType type);
+
+    void streamStarts();
+
+    void eraseIterator(StreamingBufferIterator& iterator);
+
+    void processBlockwise();
+
+    void streamFromDisk(SampleIdentifier sampleIdentifier){audioStreamer.streamFromDisk(sampleIdentifier);}
+
+    void flushToDisk(SampleIdentifier sampleIdentifier){audioStreamer.flushToDisk(sampleIdentifier);}
+
+    std::string filename(SampleIdentifier sampleIdentifier){return folderPath + "/" + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + ".wav";}
+
+    void protectSample(SampleIdentifier sampleIdentifier);
+
+    void unProtectSample(SampleIdentifier sampleIdentifier);
+
+    void initializeSample(SampleIdentifier sampleIdentifier, size_t expectedSampleLengthInFrames);
+
+    void initializeSamples(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
+
+    int findFreeChunk();
+
+    void mutate();
+
+    void stream(){audioStreamer.stream();}
+
+    void clear();
 
 private:
+    friend class AudioStreamer;
+    friend class StreamingBufferIterator;
 
-    friend class StreamingBuffer;
-
-    size_t requestId;
 
     ResourceManager* resourceManager;
-    std::pair<int,int> sampleIdentifier = {-1,-1};
-    StreamingBuffer* buffer;
-    size_t readIndexInChunk = 0;
-    size_t chunkIndex = 0;
-    size_t chunkStartIndex = 0;
+    std::string bufferName;
+    std::string folderPath;
+    //chunk storage
+    int chunkLength = 8820;
 
-    std::vector<size_t>* chunkStartIndices;
-    size_t sampleLength;
-    size_t chunkLength;
+    int totalNumberOfChunks;
+    int totalNumberOfIterators;
+    std::unordered_map<SampleIdentifier, size_t>& availableSamples;
+    std::vector<StreamingBufferIterator> iterators;
+    AudioStreamer audioStreamer;
+    ChunkState* chunkStates = nullptr;
+    std::vector<std::vector<float>> chunks;
+    std::unordered_map<SampleIdentifier, std::vector<int>> chunkIndicesInBuffer; //synchronize with audioStreamer
+    size_t StreamingBufferIteratorAssignIndex = 0;
+
+    std::atomic<size_t> freeChunkSearchIdx{0};
+
+
+    //protection of chunks (regarding chunkstates upstairs)
+    /*
+    TODO: check if this is lock free:
+        struct Slot { std::pair<int,int> a; int b; };
+        static_assert(std::is_trivially_copyable_v<Slot>);
+        std::atomic<Slot> slot;
+
+        static_assert(std::atomic<Slot>::is_always_lock_free);
+    
+
+    The following is more or less a reader lock.
+    There is now writer lock and it would be more thread safe if there was one
+    however no reader should read from a chunk that is currently written to since
+    writers (either stream thread or audio thread via write iterator)
+    only write to invalid chunks and if a reader reads from such a chunk that is
+    written to i know that there is a mistake in the management of
+    the chunkIndicesInBuffer container
+    */
+    //Auxiliary Tasks
+    int mutateDataPrio = 70;
+    std::string mutateDataTaskName;
+    AuxiliaryTask MutateDataTask;
+
+    bool mutateDataTaskNeedsScheduling = false;
+
+    //Messaging between threads
+    static constexpr size_t mutateQueueCapacity = 512;
+    StreamingMessageQueue audioToMutate{mutateQueueCapacity};
+    StreamingMessageQueue mutateToAudio{mutateQueueCapacity};
+
+    //Mutate Thread Only
+    //buffers if needed
+
+    //Job/Task management
+    std::atomic<bool> mutateTaskInFlight{false};
 };

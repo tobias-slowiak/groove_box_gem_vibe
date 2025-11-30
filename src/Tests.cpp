@@ -89,22 +89,20 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager* resour
 	assert(resourceManager != nullptr);
 	static int blocksElapsed = 0;
 	blocksElapsed++;
-	static int note = 21;
+	static int note = 33;
 	static int velocity = 1;
 	SamplePack* sp = resourceManager->getKeyInstrumentSamplePack();
-	StreamingBuffer* sb = &(sp->streamingBuffer);
 	Voices* voices = resourceManager->getVoices();
 
 	if(blocksElapsed == 1){
-		sb->printInfo();
-		sb->requestSample({21,1});
+		sp->triggerVoice({note,velocity});
 	}
-
+/*
 	if(blocksElapsed == 2) {
-		sb->printInfo();
 		rt_printf("starting playback of testSample on repeat\n");
 		voices->triggerVoice(sb, note, velocity, 0, 0, 1, 0, 1, 1, true);
 	}
+	
 	if(secondsElapsed(blocksElapsed, 2) ){
 		rt_printf("stopping playback of testSample on repeat\n");
 		resourceManager->getVoices()->triggerOff(note);
@@ -135,9 +133,9 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager* resour
 	if(secondsElapsed(blocksElapsed, 9.2) ){
 		rt_printf("\n\n\n\n\n\nshould be saturated now\n\n\n\n\n\n\n");
 	}
+	*/
 	
-	
-	sb->processBlockwise();
+	sp->processBlockwise();
 	for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++) {
 		float frame = voices->process();
 		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
@@ -321,6 +319,9 @@ void ModeManager::renderControllerTest(BelaContext *context, ResourceManager* re
 }
 
 void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager* resourceManager){
+
+
+
 	assert(context != nullptr);
 	assert(resourceManager != nullptr);
 	static int blocksElapsed = 0;
@@ -387,6 +388,9 @@ void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager* re
 	
 	*/
 void ModeManager::renderStreamingBandwidthTest(BelaContext *context, ResourceManager* resourceManager){
+/*TODO Make compatible with new streamingbuffer class
+
+
 	assert(context != nullptr);
 	assert(resourceManager != nullptr);
 	struct ConfigKey {
@@ -770,4 +774,11 @@ void ModeManager::renderStreamingBandwidthTest(BelaContext *context, ResourceMan
 			audioWrite(context, n, ch, 0.0f);
 		}
 	}
+
+
+
+
+
+
+	*/
 }

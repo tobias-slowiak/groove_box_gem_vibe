@@ -123,6 +123,9 @@ function Remove-RemoteArtifacts {
 Write-Host "[bela] Ensuring SD card is mounted..."
 Invoke-Ssh "mount | grep -q '^/dev/mmcblk0p1 on /mnt/sdcard ' || sudo mount /dev/mmcblk0p1 /mnt/sdcard"
 
+Write-Host "Reload systemctl"
+Invoke-Ssh "systemctl daemon-reload"
+
 Invoke-Ssh "mkdir -p '$RemoteFolder' '$RemoteFolder/include' '$RemoteFolder/src'"
 
 if ($Rebuild) {

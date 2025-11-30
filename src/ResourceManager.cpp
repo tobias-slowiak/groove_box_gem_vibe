@@ -70,7 +70,6 @@ void ResourceManager::setup(BelaContext* context){
 		std::vector<U8G2*> u8g2s = initU8G2s();
 	    displayContext = new DisplayContextReal(this, u8g2s);
 	    displayContext->initDisplayContext();
-	    this->setUpdateDisplayFlag(false);
 	} else {
 		printf("Interface not Connected\n");
 		displayContext = new DisplayContextFake();
@@ -115,8 +114,9 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed Samplers\n");
 	loopers = new Loopers(this);
 	printf("Constructed Loopers\n");
-	keyInstrumentSamplePack = new SamplePack(this, "keyInstrument", "/mnt/sdcard/Samples/converted_new", 44100 * 6 * 100); // approx 100 MB of space
+	keyInstrumentSamplePack = new SamplePack(this, voices, "keyInstrument", "/mnt/sdcard/Samples/converted_min", 44100 * 6 * 30); // approx 10 MB of space
 	printf("Constructed keyInstrumentSamplePack\n");
+	keyInstrumentSamplePack->printBufferInfo();
 	
 	this->makeTestSample();
 	printf("Made TestSample\n");
@@ -274,7 +274,4 @@ std::vector<float>* ResourceManager::getTestSampleVector(){
 
 std::atomic<bool>& ResourceManager::getUpdateDisplayFlag() {
 	return updateDisplayFlag;
-}
-void ResourceManager::setUpdateDisplayFlag(bool val){
-	updateDisplayFlag = val;
 }

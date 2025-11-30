@@ -1,678 +1,748 @@
-#include <Bela.h>
-#include <libraries/AudioFile/AudioFile.h>
-//
-#include <stdexcept>
-#include <exception>
-#include <dirent.h>
-#include <algorithm>
-#include <cassert>
-
 #include "../include/StreamingBuffer.h"
-#include "../include/DebugLog.h"
-#include "../include/ResourceManager.h"
+#include "../include/WavWriter.h"
+#include <errno.h>
+//compile
 
 
+///////////ChunkState/////////
 
-//TODO: still missing a way to write to the sd card for storing loops and samples.
-
-void streamSamplesOnThread(void* inArg){
-    printf("\n\nstreamSamplesOnThread fct \n\n");
-	StreamingBuffer* buffer = static_cast<StreamingBuffer*>(inArg);
-	buffer->streamSamples();
+void ChunkState::set(SampleIdentifier sampleIdentifier, int inChunkIndex, bool inWriteProtected){
+    ownerKey.store(sampleIdentifier.first, std::memory_order_release);
+    ownerVelocity.store(sampleIdentifier.second, std::memory_order_release);
+    chunkIndex.store(inChunkIndex, std::memory_order_release);
+    writeProtected.store(inWriteProtected, std::memory_order_release);
 }
 
-std::vector<std::string> listWavFiles(const std::string folderPath) {
-    //printf("Listing WAV files in folder: %s\n", folderPath.c_str());
-    std::vector<std::string> result;
-    DIR* dir = opendir(folderPath.c_str());
-    if (dir == nullptr) return result;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name.size() >= 4 && name.substr(name.size() - 4) == ".wav") {
-            result.push_back(folderPath + "/" + name);
-        }
+
+///////////StreamingMessageQueue///////////
+bool StreamingMessageQueue::push(StreamingMessage value) {
+    size_t currentHead = head.load(std::memory_order_relaxed);
+    size_t nextHead = (currentHead + 1) % capacity;
+    if(nextHead == tail.load(std::memory_order_acquire)){
+        throw std::runtime_error("StreamingMessageQueue::push queue full, investigate!");
+        return false;
     }
-    //printf("Found WAV files: %d\n", result.size());
-
-    closedir(dir);
-    return result;
+    assert(messages.size() > currentHead && "StreamingMessageQueue::push currentHead out of range");
+    messages.at(currentHead) = value;
+    DEBUG_PRINTF("SMQ::push type=%d sample=%d_%d chunk=%d chunkBuf=%d head=%zu->%zu tail=%zu\n",
+        static_cast<int>(value.type),
+        value.sampleIdentifier.first, value.sampleIdentifier.second,
+        value.chunkIndex, value.chunkIndexInBuffer,
+        currentHead, nextHead, tail.load(std::memory_order_relaxed));
+    head.store(nextHead, std::memory_order_release);
+    return true;
 }
 
+bool StreamingMessageQueue::pop(StreamingMessage& out) {
+    size_t currentTail = tail.load(std::memory_order_relaxed);
+    size_t currentHead = head.load(std::memory_order_acquire);
+    if(currentTail == currentHead)
+        return false;
+    DEBUG_PRINTF("messages.size() = %zu\n", messages.size());
+    assert(messages.size() > currentTail && "StreamingMessageQueue::pop currentTail out of range");
+    out = messages.at(currentTail);
+        DEBUG_PRINTF("SMQ::pop type=%d sample=%d_%d chunk=%d chunkBuf=%d head=%zu tail=%zu\n",
+        static_cast<int>(out.type),
+        out.sampleIdentifier.first, out.sampleIdentifier.second,
+        out.chunkIndex, out.chunkIndexInBuffer,
+        currentHead, currentTail);
+    tail.store((currentTail + 1) % capacity, std::memory_order_release);
+    return true;
+}
+
+///////////ElementProxy///////////
+
+ElementProxy& ElementProxy::operator=(float value){
+    if(iterator.sampleIdentifier.first == ITERATOR_INVALID){
+        DEBUG_RT_PRINTF("ElementProxy::operator=: WARNING: trying to write to invalid iterator\n");
+        return *this;
+    }
+    if(value == END_OF_SAMPLE){
+        if(*(iterator.data) != END_OF_SAMPLE){
+            throw std::runtime_error("ElementProxy::operator= write iterator tries to change length of sample -> initializeSample before!\n");
+        }
+        iterator.parent->eraseIterator(iterator);
+    }
+    *(iterator.data) = value;
+    return *this;
+}
+
+
+ElementProxy::operator float() const {
+    if(iterator.sampleIdentifier.first == ITERATOR_INVALID){
+        return END_OF_SAMPLE;
+    }
+    if(*(iterator.data) == END_OF_SAMPLE){
+        iterator.parent->eraseIterator(iterator);
+    }
+    return *(iterator.data);
+}
+
+///////////StreamingBufferIterator///////////
+
+namespace {
+    std::vector<int> EMPTY_CHUNK_INDEX_VECTOR = std::vector<int>();
+}
+StreamingBufferIterator::StreamingBufferIterator(StreamingBuffer* parent)
+        : sampleIdentifier({ITERATOR_INVALID,ITERATOR_INVALID}),
+        index(0),
+        parent(parent),
+        chunkIndicesInBuffer(&EMPTY_CHUNK_INDEX_VECTOR),
+        type(SBIType::None),
+        chunkIndex(ITERATOR_INVALID),
+        indexInChunk(ITERATOR_INVALID),
+        chunkIndexInBuffer(ITERATOR_INVALID),
+        chunkStartPtr(nullptr),
+        data(nullptr){}
+
+StreamingBufferIterator::StreamingBufferIterator(SampleIdentifier sampleIdentifier, size_t index,
+                                            StreamingBuffer* parent, std::vector<int>* chunkIndicesInBuffer,
+                                            SBIType type)
+        : sampleIdentifier(sampleIdentifier),
+        index(index),
+        parent(parent),
+        chunkIndicesInBuffer(chunkIndicesInBuffer),
+        type(type),
+        chunkIndex(index / parent->chunkLength),
+        indexInChunk(index % parent->chunkLength),
+        chunkIndexInBuffer(0),
+        chunkStartPtr(nullptr),
+        data(nullptr) {
+    assert(chunkIndicesInBuffer != nullptr && "StreamingBufferIterator ctor chunkIndicesInBuffer null");
+    assert(chunkIndex < chunkIndicesInBuffer->size() && "StreamingBufferIterator ctor chunkIndex out of range");
+    chunkIndexInBuffer = chunkIndicesInBuffer->at(chunkIndex);
+    assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent->chunks.size() && "StreamingBufferIterator ctor chunkIndexInBuffer out of range");
+    chunkStartPtr = parent->chunks.at(chunkIndexInBuffer).data();
+    data = chunkStartPtr + indexInChunk;
+}
+
+StreamingBufferIterator StreamingBufferIterator::operator++(int){    // post-increment
+    StreamingBufferIterator tmp = *this;
+    ++(*this);
+    return tmp;
+}
+
+StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-increment
+    if(sampleIdentifier.first == ITERATOR_INVALID){
+        return *this;
+    }
+    ++indexInChunk;
+    if(indexInChunk >= parent->chunkLength){
+        ++chunkIndex;
+        indexInChunk = 0;
+        if(chunkIndicesInBuffer->size() <= static_cast<size_t>(chunkIndex)){
+            throw std::runtime_error("StreamingBufferIterator::operator++: iterator incremented past end of sample\n");
+        } else {
+            assert(chunkIndex < chunkIndicesInBuffer->size() && "StreamingBufferIterator::operator++ chunkIndex out of range before read");
+            chunkIndexInBuffer = chunkIndicesInBuffer->at(chunkIndex);
+            if(chunkIndexInBuffer == CHUNK_INVALID){
+                if(type == SBIType::Write){
+                    assert(chunkIndex < chunkIndicesInBuffer->size() && "StreamingBufferIterator::operator++ write chunkIndex out of range before assign");
+                    chunkIndexInBuffer = parent->findFreeChunk();
+                    chunkIndicesInBuffer->at(chunkIndex) = chunkIndexInBuffer;
+                    parent->audioStreamer.audioToStream.push({StreamingMessageType::AssignChunk, sampleIdentifier, chunkIndex, chunkIndexInBuffer});
+                    parent->audioStreamer.streamNeedsScheduling = true;
+                    parent->chunkStates[chunkIndexInBuffer].set(sampleIdentifier, chunkIndex, true);
+                }
+                if(type == SBIType::Read){
+                    throw std::runtime_error("StreamingBufferIterator::operator++: stream too slow");
+                }
+            }
+            assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent->chunks.size() && "StreamingBufferIterator::operator++ chunkIndexInBuffer out of range");
+            chunkStartPtr = parent->chunks.at(chunkIndexInBuffer).data();
+            data = chunkStartPtr;
+        }
+    } else {
+        ++data;
+    }
+    return *this;
+}
+
+void StreamingBufferIterator::set(SampleIdentifier sampleIdentifier,
+        size_t index, StreamingBuffer* parent,
+        std::vector<int>* chunkIndicesInBuffer,
+        SBIType type){
+    this->sampleIdentifier = sampleIdentifier;
+    this->index = index;
+    this->parent = parent;
+    this->chunkIndicesInBuffer = chunkIndicesInBuffer;
+    this->type = type;
+    this->chunkIndex = index / parent->chunkLength;
+    this->indexInChunk = index % parent->chunkLength;
+    assert(chunkIndicesInBuffer != nullptr && "StreamingBufferIterator::set chunkIndicesInBuffer null");
+    assert(chunkIndex < chunkIndicesInBuffer->size() && "StreamingBufferIterator::set chunkIndex out of range");
+    this->chunkIndexInBuffer = chunkIndicesInBuffer->at(chunkIndex);
+if (chunkIndexInBuffer < 0 ||
+    static_cast<size_t>(chunkIndexInBuffer) >= parent->chunks.size()) {
+    std::string errormsg = "chunkIndexInBuffer " + std::to_string(chunkIndexInBuffer) +
+                           " of " + std::to_string(parent->chunks.size());
+    throw std::runtime_error(errormsg);
+}
+    assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent->chunks.size() && "StreamingBufferIterator::set chunkIndexInBuffer out of range");
+    this->chunkStartPtr = parent->chunks.at(chunkIndexInBuffer).data();
+    this->data = chunkStartPtr + indexInChunk;
+}
+
+void StreamingBufferIterator::initialize(){
+    this->sampleIdentifier = {ITERATOR_INVALID,ITERATOR_INVALID};
+    this->index = 0;
+    this->chunkIndicesInBuffer = &EMPTY_CHUNK_INDEX_VECTOR;
+    this->type = SBIType::None;
+    this->chunkIndex = 0;
+    this->indexInChunk = 0;
+    this->chunkIndexInBuffer = ITERATOR_INVALID;
+    this->chunkStartPtr = nullptr;
+    this->data = nullptr;
+}
+
+///////////StreamingBuffer///////////
 
 StreamingBuffer::StreamingBuffer(ResourceManager* resourceManager,
-    size_t size, std::string bufferName,std::string folderPath)
-        : resourceManager(resourceManager), bufferName(bufferName), folderPath(folderPath){
-    assert(resourceManager != nullptr);
-    assert(size > 0);
-    
-    buffer.resize(size, 0.0f);
-    DEBUG_RT_PRINTF("creating buffer with size %d\n", buffer.size());
-    std::string samplesTaskName = "SB_streamTask_" + bufferName;
-    streamSamplesTask = Bela_createAuxiliaryTask(streamSamplesOnThread, sampleStreamPrio, samplesTaskName.c_str(), (void*)this);
-    
-    //do the first stream of starts at setup on regular setup thread.
-    this->streamStarts();
-    DEBUG_RT_PRINTF("Finished setting up streaming buffer %s", bufferName.c_str());
-    this->printInfo();
+            size_t bufferLengthInFrames,
+            int totalNumberOfIterators,
+            std::string bufferName, std::string folderPath,
+            std::unordered_map<SampleIdentifier, size_t>& availableSamples)
+            : resourceManager(resourceManager),
+            bufferName(bufferName), folderPath(folderPath),
+            chunkLength(8820),
+            totalNumberOfChunks(static_cast<int>(bufferLengthInFrames / chunkLength) + 1),
+            totalNumberOfIterators(totalNumberOfIterators),
+            availableSamples(availableSamples),
+            iterators(std::vector<StreamingBufferIterator>(totalNumberOfIterators, StreamingBufferIterator(this))),
+            audioStreamer(*this),
+            chunkStates(new ChunkState[totalNumberOfChunks]),
+            chunks(totalNumberOfChunks, std::vector<float>(chunkLength)),
+            mutateDataTaskName(bufferName + "_MTask"),
+            MutateDataTask(Bela_createAuxiliaryTask(mutateOnThread, mutateDataPrio, mutateDataTaskName.c_str(), (void*)this))
+{
+    DEBUG_PRINTF("StreamingBuffer ctor(dynamic): bufferFrames=%u chunkLen=%d totalChunks=%d iters=%d name=%s path=%s fps=%d\n",
+        (unsigned int)bufferLengthInFrames,
+        chunkLength,
+        totalNumberOfChunks,
+        totalNumberOfIterators,
+        bufferName.c_str(),
+        folderPath.c_str(),
+        resourceManager->audioFramesPerSecond);
 }
 
-void StreamingBuffer::initForFolder(std::string folderPath, size_t chunkLength){
-
-    this->chunkLength = chunkLength;
-    this->folderPath = folderPath;
-
-    pendingSamplesToLoad.clear();
-    streamStartsNeedsScheduling = true;
+StreamingBuffer::~StreamingBuffer(){
+    delete[] chunkStates;
 }
 
-
-void StreamingBuffer::eraseSample(std::pair<int,int> sampleIdentifier){
-    //mark all chunks except the start chunk as free and remove them from chunkStartIndices
-    auto& sampleChunkStarts = chunkStartIndices[sampleIdentifier];
-    while (sampleChunkStarts.size() > 1) {
-        assert(sampleChunkStarts.size() > 1);
-        size_t chunkStartIndex = sampleChunkStarts.at(1);
-        size_t globalChunkIndex = (chunkStartIndex - streamedChunkAreaStartIndex) / chunkLength;
-        assert(streamedChunkOwnership.size() > globalChunkIndex);
-        sampleChunkStarts.erase(sampleChunkStarts.begin() + 1);
-        streamedChunkOwnership[globalChunkIndex] = {-1, -1};
-    }
-    //remove it from fullyLoadedSamples
-    fullyLoadedSamples.erase(std::remove(fullyLoadedSamples.begin(), fullyLoadedSamples.end(), sampleIdentifier), fullyLoadedSamples.end());
+void mutateOnThread(void* arg){
+    DEBUG_PRINTF("\n\n mutateOnThread\n\n");
+    StreamingBuffer* streamingBuffer = static_cast<StreamingBuffer*>(arg);
+    streamingBuffer->mutate();
 }
 
-size_t StreamingBuffer::requestSample(std::pair<int,int> sampleIdentifier){
-    currentRequestId++;
-    if(currentRequestId == SIZE_MAX){
-        currentRequestId = 1;
-    }
-
-    activeRequests[currentRequestId] = Request(resourceManager, sampleIdentifier, this, currentRequestId);
-    if(std::find(fullyLoadedSamples.begin(), fullyLoadedSamples.end(), sampleIdentifier) != fullyLoadedSamples.end()){
-        DEBUG_RT_PRINTF("StreamingBuffer::requestSample: sample for sampleId: %d %d already fully loaded\n", sampleIdentifier.first, sampleIdentifier.second);
-    } else {
-        DEBUG_RT_PRINTF("StreamingBuffer::requestSample: sampleId: %d %d with requestId: %zu starting load\n", sampleIdentifier.first, sampleIdentifier.second, currentRequestId);
-        pendingSamplesToLoad.push_back(sampleIdentifier);
-        streamChunksNeedsScheduling = true;
-    }
-    return currentRequestId;
-}
-
-void StreamingBuffer::processBlockwise(){
-    assert(resourceManager != nullptr);
-    static int blocksTillNextPrint = 0;
-    if(streamStartsNeedsScheduling){
-        auto status = scheduleStreamTask(StreamJobKind::Starts);
-        if(status == ScheduleStatus::Scheduled){
-            DEBUG_RT_PRINTF("Invoked stream for sampleStarts\n");
-            streamStartsNeedsScheduling = false;
-        } else if(status == ScheduleStatus::Busy){
-            if(blocksTillNextPrint%1000 == 0){
-                DEBUG_RT_PRINTF("failed invoke stream for sampleStarts try on next block, print again in 1000 blocks\n");
+void StreamingBuffer::mutate(){
+    StreamingMessage msg;
+    while(audioToMutate.pop(msg)){
+        if(msg.type == StreamingMessageType::InitializeSample){
+            auto insertResult = chunkIndicesInBuffer.insert(std::make_pair(msg.sampleIdentifier, std::vector<int>()));
+            std::vector<int>& localChunkIndicesInBuffer = insertResult.first->second;
+            DEBUG_PRINTF("StreamingBuffer::mutate InitializeSample %d_%d chunks=%d%s\n",
+                msg.sampleIdentifier.first, msg.sampleIdentifier.second, msg.chunkIndex,
+                insertResult.second ? " (new)" : " (reset)");
+            if(!insertResult.second){
+                for(int chunkIndexInBuffer: localChunkIndicesInBuffer){
+                    if(chunkIndexInBuffer != CHUNK_INVALID){
+                        chunkStates[chunkIndexInBuffer].set({-1,-1}, -1, false);
+                    }
+                }
             }
-            blocksTillNextPrint += 1;
-        } else {
-            DEBUG_RT_PRINTF("scheduleStreamTask (starts version) failed, investigate!\n");
+            chunkIndicesInBuffer[msg.sampleIdentifier] = std::vector<int>(msg.chunkIndex, CHUNK_INVALID);
+            audioStreamer.s_chunkIndicesInBuffer[msg.sampleIdentifier] = std::vector<int>(msg.chunkIndex, CHUNK_INVALID);
         }
-    }
-    if(streamChunksNeedsScheduling){
-        auto currentJob = jobInFlight.load(std::memory_order_acquire);
-        if(currentJob == StreamJobKind::Starts){
-            if(blocksTillNextPrint%1000 == 0)
-                DEBUG_RT_PRINTF("failed invoke stream for chunks, because still loading starts. try on next block, print again in 1000 blocks\n");
-            blocksTillNextPrint += 1;
-            return;
-        }
-        if(currentJob == StreamJobKind::Chunks){
-            // Already streaming chunks; the pending load will be handled by the in-flight job.
-            streamChunksNeedsScheduling = false;
-            return;
-        } else {
-            auto status = scheduleStreamTask(StreamJobKind::Chunks);
-            if(status == ScheduleStatus::Scheduled){
-                DEBUG_RT_PRINTF("Invoked stream for chunks\n");
-                streamChunksNeedsScheduling = false;
-            } else if(status == ScheduleStatus::Busy){
-                DEBUG_RT_PRINTF("StreamingBuffer::processBlockwise: worker busy, will retry chunk scheduling\n");
-            } else {
-                DEBUG_RT_PRINTF("scheduleStreamTask (chunk version) failed, investigate!\n");
+        if(msg.type == StreamingMessageType::Clear){
+            DEBUG_PRINTF("StreamingBuffer::mutate Clear\n");
+            chunkIndicesInBuffer.clear();
+            audioStreamer.s_chunkIndicesInBuffer.clear();
+            audioStreamer.pendingFlushes.clear();
+            audioStreamer.f_numberOfFlushableChunks.clear();
+            for(StreamingBufferIterator& it : iterators){
+                it.initialize();
             }
+            for(size_t chunkStateIndex = 0; chunkStateIndex < totalNumberOfChunks; chunkStateIndex++){
+                chunkStates[chunkStateIndex].set({-1,-1}, -1, false);
+            }
+            StreamingMessage dummyMsg;
+            while(audioStreamer.audioToStream.pop(dummyMsg)){}
+            while(audioStreamer.flushToAudio.pop(dummyMsg)){}
+            while(audioStreamer.streamToAudio.pop(dummyMsg)){}
+            while(audioStreamer.audioToFlush.pop(dummyMsg)){}
         }
     }
+    mutateTaskInFlight.store(false, std::memory_order_release);
 }
 
-StreamingBuffer::ScheduleStatus StreamingBuffer::scheduleStreamTask(StreamJobKind kind){
-    StreamJobKind expected = StreamJobKind::None;
-    if(!jobInFlight.compare_exchange_strong(expected, kind, std::memory_order_acq_rel)){
-        return ScheduleStatus::Busy;
-    }
-    uint32_t jobId = 0;
-    if(kind == StreamJobKind::Starts){
-        jobId = startJobsIssued.fetch_add(1, std::memory_order_relaxed) + 1;
-        activeStartJobId.store(jobId, std::memory_order_release);
-        DEBUG_RT_PRINTF("Scheduling stream task for starts with Id %d\n", jobId);
-    } else {
-        jobId = chunkJobsIssued.fetch_add(1, std::memory_order_relaxed) + 1;
-        activeChunkJobId.store(jobId, std::memory_order_release);
-    }
-    int scheduleReturn = Bela_scheduleAuxiliaryTask(streamSamplesTask);
-    if(scheduleReturn == 0){
-        return ScheduleStatus::Scheduled;
-    }
-    // Roll back counters if scheduling failed.
-    if(kind == StreamJobKind::Starts){
-        activeStartJobId.store(0, std::memory_order_release);
-        startJobsIssued.fetch_sub(1, std::memory_order_relaxed);
-    } else {
-        activeChunkJobId.store(0, std::memory_order_release);
-        chunkJobsIssued.fetch_sub(1, std::memory_order_relaxed);
-    }
-    jobInFlight.store(StreamJobKind::None, std::memory_order_release);
-
-    if(scheduleReturn == EBUSY){
-        return ScheduleStatus::Busy;
-    }
-    DEBUG_RT_PRINTF("Bela_scheduleAuxiliaryTask returned error %d\n", scheduleReturn);
-    return ScheduleStatus::Error;
+void StreamingBuffer::clear(){
+    audioToMutate.push({StreamingMessageType::Clear, {-1,-1}, -1, -1});
+    mutateDataTaskNeedsScheduling = true;
 }
 
-Request::Request(ResourceManager* resourceManager, std::pair<int,int> sampleIdentifier, StreamingBuffer* buffer,
-                size_t requestId):
-                requestId(requestId), resourceManager(resourceManager),
-                sampleIdentifier(sampleIdentifier), buffer(buffer),
-                chunkStartIndices(&(buffer->chunkStartIndices[sampleIdentifier])),
-                sampleLength(buffer->sampleLengths[sampleIdentifier]),
-                chunkLength(buffer->chunkLength)
-    {
-        assert(resourceManager != nullptr);
-        assert(buffer != nullptr);
-        assert(chunkStartIndices != nullptr);
-        assert(!chunkStartIndices->empty());
-        chunkStartIndex = chunkStartIndices->at(0);
-        if(chunkStartIndices->size() > 0)
-            DEBUG_RT_PRINTF("chunkstartindices size: %zu\n", chunkStartIndices->size());
-        else
-            DEBUG_RT_PRINTF("Request: sample %d %d chunkStartIndices empty\n", sampleIdentifier.first, sampleIdentifier.second);
-    }
-
-float Request::getNextSample(){
-    assert(resourceManager != nullptr);
-    assert(buffer != nullptr);
-    assert(chunkStartIndices != nullptr);
-    readIndexInChunk++;
-    if(chunkIndex * chunkLength + readIndexInChunk > sampleLength){
-        //end of sample reached.
-        return resourceManager->END_OF_SAMPLE;
-    }
-    if(readIndexInChunk >= chunkLength){
-        readIndexInChunk = 0;
-        chunkIndex++;
-        if(chunkIndex >= chunkStartIndices->size()){
-            std::string errormsg = "Request::getNextSample: request: "
-                    + std::to_string(requestId) + " chunkIndex " + std::to_string(chunkIndex)
-                    + " not yet loaded. Stream too slow.";
-            throw std::out_of_range(errormsg.c_str());
+StreamingBufferIterator& StreamingBuffer::begin(SampleIdentifier sampleIdentifier, SBIType type){
+    auto insertResult = chunkIndicesInBuffer.insert(std::make_pair(sampleIdentifier, std::vector<int>()));
+    bool inserted = insertResult.second;
+    std::vector<int>& localChunkIndicesInBuffer = insertResult.first->second;
+    DEBUG_PRINTF("StreamingBuffer::begin sample %d_%d type=%d inserted=%d chunkindicesinbuffer.size() = %zu\n",
+        sampleIdentifier.first, sampleIdentifier.second, static_cast<int>(type), inserted ? 1 : 0, localChunkIndicesInBuffer.size());
+    for(int i = 0; i < totalNumberOfIterators; i++){
+        StreamingBufferIteratorAssignIndex = (StreamingBufferIteratorAssignIndex + 1) % totalNumberOfIterators;
+        DEBUG_PRINTF("trying to write to iterator %zu with key %d\n", StreamingBufferIteratorAssignIndex, iterators.at(StreamingBufferIteratorAssignIndex).sampleIdentifier.first);
+        assert(StreamingBufferIteratorAssignIndex < iterators.size() && "StreamingBuffer::begin iterator index out of range");
+        if(iterators.at(StreamingBufferIteratorAssignIndex).sampleIdentifier.first == ITERATOR_INVALID){
+            break;
         }
-        chunkStartIndex = chunkStartIndices->at(chunkIndex);
+        if(i == totalNumberOfIterators - 1){
+            throw std::runtime_error("StreamingBuffer::begin: no free iterator slots available. This should never happen. Probably there is a bug that iterators dont get invalidated that should\n");
+        }
     }
-    size_t absoluteIndex = chunkStartIndex + readIndexInChunk;
-    assert(buffer->buffer.size() > absoluteIndex);
-    return buffer->at(absoluteIndex);
-}
-
-float StreamingBuffer::getNextSample(size_t requestId){
-    if(requestId == 0){
-        DEBUG_RT_PRINTF("ERROR: requesting RequestId 0. This should never happen. The request had to wait because the thread was still loading the starts.");
-        throw std::runtime_error("ERROR: requesting RequestId 0. This should never happen. The request had to wait because the thread was still loading the starts.");
+    if(inserted){
+        throw std::runtime_error("StreamingBuffer::begin: sample not initialized. Call initializeSample before begin. maybe implement this in the future.\n");
     }
-    if(activeRequests.find(requestId) == activeRequests.end()) return 0.0f;
-    float nextSample = activeRequests[requestId].getNextSample();
-    if(nextSample == resourceManager->END_OF_SAMPLE){
-        activeRequests.erase(requestId);
+    assert(StreamingBufferIteratorAssignIndex < iterators.size() && "StreamingBuffer::begin assign index out of range");
+    assert(localChunkIndicesInBuffer.size() > 0 && "StreamingBuffer::begin: chunkIndicesInBuffer not initialized for sampleIdentifier");
+    assert(0 < localChunkIndicesInBuffer.size() && "StreamingBuffer::begin chunk 0 missing");
+    if (localChunkIndicesInBuffer.at(0) == CHUNK_INVALID) {
+        int chunkIndexInBuffer = findFreeChunk();
+        assert(0 < localChunkIndicesInBuffer.size() && "StreamingBuffer::begin chunk 0 missing before assign");
+        localChunkIndicesInBuffer.at(0) = chunkIndexInBuffer;
+        audioStreamer.audioToStream.push({StreamingMessageType::AssignChunk, sampleIdentifier, 0, chunkIndexInBuffer});
+        audioStreamer.streamNeedsScheduling = true;
+        if(type == SBIType::Read){
+            assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < chunks.size() && "StreamingBuffer::begin chunkIndexInBuffer out of range before write");
+            assert(chunks.at(chunkIndexInBuffer).size() > 0 && "StreamingBuffer::begin chunk data empty at 0");
+            chunks.at(chunkIndexInBuffer).at(0) = SAMPLE_NOT_LOADED_VALUE;
+            audioStreamer.streamFromDisk(sampleIdentifier);
+        }
+        if(type == SBIType::Write){  
+            chunkStates[chunkIndexInBuffer].set(sampleIdentifier, 0, true);
+        }
+    } else {
+        protectSample(sampleIdentifier);
+        if(type == SBIType::Read){
+            audioStreamer.streamFromDisk(sampleIdentifier);
+        }
     }
-    return nextSample;
-}
-
-int StreamingBuffer::getRequestSampleLength(size_t requestId){
-    return sampleLengths[activeRequests[requestId].getSampleIdentifier()];
+    iterators.at(StreamingBufferIteratorAssignIndex).set(sampleIdentifier, 0, this, &localChunkIndicesInBuffer, type);
+    assert(StreamingBufferIteratorAssignIndex < iterators.size() && "StreamingBuffer::begin return index out of range");
+    return iterators.at(StreamingBufferIteratorAssignIndex);
 }
 
 void StreamingBuffer::streamStarts(){
-    DEBUG_PRINTF("\n\n\nstarting stream (starts version)\n");
-    this->clearContainers();
-    //----------------------------------------------------------------------------
-    // Make a list of available samples in the folder
-    availableSamples.clear();
-    std::vector<std::string> wavFiles = listWavFiles(folderPath);
-    // TODO: make this for auto filename in wavfiles.
-    // Also make it not key and velocity because it also could be other sample identifiers.
-    for(int key = 0; key < 128; key++){
-        for(int velocity = 0; velocity < 128; velocity++){
-            std::pair<int,int> sampleIdentifier = {key, velocity};
-            std::string filename = folderPath + "/" + std::to_string(key) + "_" + std::to_string(velocity) + ".wav";
-            if(std::find(wavFiles.begin(), wavFiles.end(), filename) != wavFiles.end()){
-                filenames[sampleIdentifier] = filename;
-                availableSamples.push_back(sampleIdentifier);
-            }
-        }
-    }
-    //----------------------------------------------------------------------------
-
-    //----------------------------------------------------------------------------
-    // Make 2 areas (startArea and streamedChunkArea) in the bigSamplePackBuffer
-    // startArea has #availableSamples * chunkLength samples that are only loaded once at initForFolder
-    // For convenience it's used size is fit to numStarts * chunkLength + numChunks * chunkLength
-    streamedChunkAreaStartIndex = availableSamples.size() * chunkLength;
-    size_t streamedChunkAreaLength = buffer.size() - streamedChunkAreaStartIndex;
-    size_t numChunks = streamedChunkAreaLength / chunkLength;
-    //DEBUG_PRINTF("streamingBuffer initialisation: chunk area can hold %zu chunks\n", numChunks);
-    availableBufferLength = availableSamples.size() * chunkLength + numChunks * chunkLength;
-    //DEBUG_PRINTF("streamingBuffer initialisation: availableBufferLength set to %zu samples == %zu chunks\n", availableBufferLength, availableBufferLength / chunkLength);
-    streamedChunkOwnership.clear();
-    for(int i = 0; i < numChunks; i++){
-        streamedChunkOwnership.push_back({-1, -1}); // mark as free
-    }
-    //----------------------------------------------------------------------------
-
-    size_t currentSampleStartIndex = 0;
-    // Load sample starts into big buffer
-    for(auto& sampleIdentifier: availableSamples){
-        std::string filename = folderPath + "/" + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + ".wav";
-        filenames[sampleIdentifier] = filename;
-        //TODO: check if sample is shorter than chunkLength
-        int channel = 0; //TODO: make this multi channel capable (stereo to mono)
-        sampleLengths[sampleIdentifier] = AudioFileUtilities::getNumFrames(filename);
-        assert(buffer.size() >= currentSampleStartIndex + chunkLength);
-        if(AudioFileUtilities::getSamples(filename, buffer.data() + currentSampleStartIndex, channel, 0, chunkLength) == 0) {
-            //DEBUG_PRINTF("%d %d, ", sampleIdentifier.first, sampleIdentifier.second);
-        } else {
-            DEBUG_PRINTF("failed to load sample %s\n", filename.c_str());
-            throw std::runtime_error("StreamingBuffer::initForFolder: failed to load sample");
-        }
-        chunkStartIndices[sampleIdentifier].push_back(currentSampleStartIndex);
-        currentSampleStartIndex += chunkLength;
+    for(auto& sampleInfo: availableSamples){
+        SampleIdentifier sampleIdentifier = sampleInfo.first;
+        audioStreamer.streamStartFromDisk(sampleIdentifier);
     }
 }
 
-void StreamingBuffer::streamChunks(){
-    DEBUG_PRINTF("\n\n\nstarting stream (chunk version)\n");
-    //DEBUG_PRINTF("available samples: %zu\n\n", availableSamples.size());
-    //TODO: this seems dangerous in case the audio thread is adding something to pending samples while the stream is ongoing.
-    std::map<std::pair<int,int>, size_t> currentChunkToLoad;
-    while(pendingSamplesToLoad.size() > 0){
-        /*
-        //old debug print
-        DEBUG_PRINTF("\n working on pending samples\n");
-        DEBUG_PRINTF("Pending Samples:\n");
-        for(auto& sid: pendingSamplesToLoad){
-            DEBUG_PRINTF("%d %d, ", sid.first, sid.second);
+void StreamingBuffer::eraseIterator(StreamingBufferIterator& iterator){
+    auto it = std::find_if(iterators.begin(), iterators.end(),
+        [&iterator](const StreamingBufferIterator& elem) {
+            return &elem == &iterator;
+        }); //check if adress of elem is equal to address of iterator
+    if (it != iterators.end()) {
+        StreamingBufferIterator& itRef = *it;
+        if(itRef.type == SBIType::Write){
+            flushToDisk(itRef.sampleIdentifier);
         }
-        DEBUG_PRINTF("\n\n\n");
-        //DEBUG_PRINTF("sample Id: %d %d\n\n", pendingSamplesToLoad.at(0).first, pendingSamplesToLoad.at(0).second);
-        */
-        for(int i = 0; i < pendingSamplesToLoad.size(); i++){
-            std::pair<int, int> sampleIdentifier = {-1,-1};
-            assert(i >= 0 && pendingSamplesToLoad.size() > static_cast<size_t>(i));
-            sampleIdentifier = pendingSamplesToLoad.at(i);
+        SampleIdentifier oldSampleIdentifier = itRef.sampleIdentifier;
+        itRef.initialize();
+        bool exists = false;
+        //check if I still have to protect the sample
 
-            //see if i am already loading this sample
-            if(currentChunkToLoad.find(sampleIdentifier) == currentChunkToLoad.end()){
-                currentChunkToLoad[sampleIdentifier] = 1;
-                DEBUG_PRINTF("starting to load the first chunk\n");
+        //is there another iterator?
+        exists = std::any_of(iterators.begin(),iterators.end(),
+            [&](const StreamingBufferIterator& iter) {
+                return iter.sampleIdentifier == oldSampleIdentifier;
             }
-            
-            //------------MANAGING THE READ FROM SD CARD --------------------------------
-            size_t sdFileReadStartIndex = currentChunkToLoad[sampleIdentifier] * chunkLength;
-            size_t sdFileReadEndIndex = sdFileReadStartIndex + chunkLength;
+        );
+        if(exists) return;
 
-            //check if this is the last chunk to load for this sample
-            if((currentChunkToLoad[sampleIdentifier] + 1) * chunkLength >= sampleLengths[sampleIdentifier]){ // ending within this chunk
-                DEBUG_PRINTF("loading the last chunk of %d %d\n", sampleIdentifier.first, sampleIdentifier.second);
-                sdFileReadEndIndex = sampleLengths[sampleIdentifier];
-                
-                //sample fully loaded
-                fullyLoadedSamples.push_back(sampleIdentifier);
-                pendingSamplesToLoad.erase(pendingSamplesToLoad.begin() + i);
-                currentChunkToLoad.erase(sampleIdentifier);
-                i--;
+        //Is there a flush going for the sample?
+        exists = std::any_of(audioStreamer.pendingFlushes.begin(),audioStreamer.pendingFlushes.end(),
+            [&](const SampleIdentifier& sId) {
+                return sId == oldSampleIdentifier;
+            }
+        );
+        if(exists) return;
+
+        unProtectSample(oldSampleIdentifier);
+    } else {
+        throw std::runtime_error("StreamingBuffer::eraseIterator: iterator not found in iterators vector\n");
+    }
+}
+
+void StreamingBuffer::processBlockwise(){
+    if(mutateDataTaskNeedsScheduling){
+        bool expected = false;
+        if(mutateTaskInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel)){
+            int scheduleResponse = Bela_scheduleAuxiliaryTask(MutateDataTask);
+            if(scheduleResponse == 0){
+                mutateDataTaskNeedsScheduling = false;
             } else {
-                currentChunkToLoad[sampleIdentifier]++;
-            }
-
-            //----------------MANAGING THE WRITE TO THE BUFFER-------------------------
-                        bool freeChunkFound = false;
-            size_t currentSampleStartIndex = streamedChunkAreaStartIndex;
-            int targetChunkIndex = -1;
-            std::pair<int,int> sampleToEvict = {-1,-1};
-
-            auto requestProgress = [&](const Request& req){
-                return req.chunkIndex * chunkLength + req.readIndexInChunk;
-            };
-
-            // Pass 1: grab the first free slot.
-            for(size_t globalChunkIndex = 0; globalChunkIndex < streamedChunkOwnership.size(); ++globalChunkIndex){
-                assert(streamedChunkOwnership.size() > globalChunkIndex);
-                if(streamedChunkOwnership.at(globalChunkIndex).first == -1){
-                    targetChunkIndex = static_cast<int>(globalChunkIndex);
-                    freeChunkFound = true;
-                    break;
+                mutateTaskInFlight.store(false, std::memory_order_release);
+                if(scheduleResponse != EBUSY){
+                    DEBUG_RT_PRINTF("streamingbuffer::processBlockwise(): Bela_scheduleAuxiliaryTask sent error code: %d\n", scheduleResponse);
                 }
             }
+        }
+    }
+    //TODO: barrier if mutate task in flight?
+    audioStreamer.processBlockwise();
+}
 
-            
-            // Pass 2: reuse a chunk whose sample is no longer requested.
-            if(!freeChunkFound){
-                for(size_t globalChunkIndex = 0; globalChunkIndex < streamedChunkOwnership.size(); ++globalChunkIndex){
-                    assert(streamedChunkOwnership.size() > globalChunkIndex);
-                    std::pair<int,int> owner = streamedChunkOwnership.at(globalChunkIndex);
-                    if(owner.first == -1){
-                        continue;
-                    }
-                    bool sampleStillActive = false;
-                    for(const auto& entry : activeRequests){
-                        if(entry.second.sampleIdentifier == owner){
-                            sampleStillActive = true;
-                            break;
-                        }
-                    }
-                    if(!sampleStillActive){
-                        sampleToEvict = owner;
-                        targetChunkIndex = static_cast<int>(globalChunkIndex);
-                        freeChunkFound = true;
-                        break;
-                    }
+void StreamingBuffer::protectSample(SampleIdentifier sampleIdentifier){
+    std::vector<int>& localChunkIndicesInBuffer = chunkIndicesInBuffer[sampleIdentifier];
+    for(int chunkIndex = 0; chunkIndex < localChunkIndicesInBuffer.size(); chunkIndex++){
+        assert(localChunkIndicesInBuffer.size() > chunkIndex && "protectsample: chunkindicesinbuffer to small");
+        assert(chunkIndex >= 0 && static_cast<size_t>(chunkIndex) < localChunkIndicesInBuffer.size() && "protectsample: at(chunkIndex) out of range");
+        if(localChunkIndicesInBuffer.at(chunkIndex) == CHUNK_INVALID){
+            continue;
+        }
+        int chunkIndexInBuffer = localChunkIndicesInBuffer.at(chunkIndex);
+        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < chunks.size() && "protectsample: chunkIndexInBuffer out of range");
+        chunkStates[chunkIndexInBuffer].writeProtected.store(true, std::memory_order_release);
+    }
+}
+
+void StreamingBuffer::unProtectSample(SampleIdentifier sampleIdentifier){
+    std::vector<int>& localChunkIndicesInBuffer = chunkIndicesInBuffer[sampleIdentifier];
+    for(int chunkIndex = 0; chunkIndex < localChunkIndicesInBuffer.size(); chunkIndex++){
+        assert(localChunkIndicesInBuffer.size() > chunkIndex && "unprotectsample: chunkindicesinbuffer to small");
+        assert(chunkIndex >= 0 && static_cast<size_t>(chunkIndex) < localChunkIndicesInBuffer.size() && "unprotectsample: at(chunkIndex) out of range");
+        if(localChunkIndicesInBuffer.at(chunkIndex) == CHUNK_INVALID){
+            continue;
+        }
+        int chunkIndexInBuffer = localChunkIndicesInBuffer.at(chunkIndex);
+        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < chunks.size() && "unprotectsample: chunkIndexInBuffer out of range");
+        chunkStates[chunkIndexInBuffer].writeProtected.store(false, std::memory_order_release);
+    }
+}
+
+void StreamingBuffer::initializeSamples(std::unordered_map<SampleIdentifier, size_t>& availableSamples){
+    //DEBUG_PRINTF("StreamingBuffer::initializeSamples count=%zu\n", availableSamples.size());
+    clear();
+    for(auto& sampleInfo: availableSamples){
+        initializeSample(sampleInfo.first, sampleInfo.second);
+    }
+}
+
+void StreamingBuffer::initializeSample(SampleIdentifier sampleIdentifier, size_t expectedSampleLengthInFrames){
+    //DEBUG_PRINTF("StreamingBuffer::initializeSample %d_%d frames=%u\n",
+    //    sampleIdentifier.first, sampleIdentifier.second, (unsigned int)expectedSampleLengthInFrames);
+    int numberOfChunks = static_cast<int>(expectedSampleLengthInFrames / chunkLength) + 1;
+    audioToMutate.push({StreamingMessageType::InitializeSample, sampleIdentifier, numberOfChunks, -1});
+    mutateDataTaskNeedsScheduling = true;
+}
+
+void StreamingBuffer::printInfo(){
+    rt_printf("StreamingBuffer info:\n");
+    rt_printf("  name=%s path=%s\n", bufferName.c_str(), folderPath.c_str());
+    rt_printf("  chunkLength=%d totalChunks=%d iterators=%d\n", chunkLength, totalNumberOfChunks, totalNumberOfIterators);
+    rt_printf("  chunks size=%zu chunkStates=%s\n", chunks.size(), chunkStates ? "yes" : "no");
+    rt_printf("  availableSamples=%zu chunkIndicesInBuffer=%zu\n", availableSamples.size(), chunkIndicesInBuffer.size());
+    for(auto& availableSample: availableSamples){
+        SampleIdentifier sampleIdentifier = availableSample.first;
+        rt_printf("chunkIndicesInBuffer[%d,%d] = {%d, %d, ...\n", sampleIdentifier.first, sampleIdentifier.second, chunkIndicesInBuffer[sampleIdentifier].at(0), chunkIndicesInBuffer[sampleIdentifier].at(1));
+
+    }
+    rt_printf("...\n");
+    rt_printf("  iteratorAssignIndex=%zu freeChunkIdx=%zu\n", StreamingBufferIteratorAssignIndex, freeChunkSearchIdx.load(std::memory_order_relaxed));
+}
+
+int StreamingBuffer::findFreeChunk(){
+    const size_t chunkCount = chunks.size();
+    if(chunkCount == 0){
+        throw std::runtime_error("findFreeChunk called with no chunks allocated\n");
+    }
+
+    // Start from a rotating index to avoid scanning from 0 each time.
+    size_t start = freeChunkSearchIdx.fetch_add(1, std::memory_order_acq_rel) % chunkCount;
+    for(size_t offset = 0; offset < chunkCount; ++offset){
+        size_t chunkIndexInBuffer = (start + offset) % chunkCount;
+        int chunkIndex = chunkStates[chunkIndexInBuffer].chunkIndex.load(std::memory_order_acquire);
+        DEBUG_PRINTF("trying to write to chunkindexinbuffer: %zu where chunkIndex is %d\n", chunkIndexInBuffer, chunkIndex);
+        if(chunkIndex != 0){ //NEVER OVERWRITE A FIRST CHUNK
+
+            if(!( chunkStates[chunkIndexInBuffer].writeProtected.load(std::memory_order_acquire) )){
+                            DEBUG_PRINTF("returning free chunk %d\n", chunkIndexInBuffer);
+                return static_cast<int>(chunkIndexInBuffer);
+            }
+        }
+    }
+    throw std::runtime_error("did not find a free chunk\n");
+    return -1;
+}
+
+
+///////////AudioStreamer///////////
+
+AudioStreamer::AudioStreamer(StreamingBuffer& streamingBuffer): parent(streamingBuffer),
+        streamBuffer(std::vector<float>(parent.chunkLength)),
+        flushBuffer(std::vector<float>(parent.chunkLength)){
+    streamSamplesTaskName = parent.bufferName + "_STask";
+    flushToDiskTaskName = parent.bufferName + "_FTask";
+    streamSamplesTask = Bela_createAuxiliaryTask(streamOnThread, streamSamplePrio, streamSamplesTaskName.c_str(), (void*)this);
+    flushToDiskTask = Bela_createAuxiliaryTask(flushOnThread, flushToDiskPrio, flushToDiskTaskName.c_str(), (void*)this);
+}
+
+void AudioStreamer::streamChunk(SampleIdentifier sampleIdentifier, int chunkIndex, int chunkIndexInBuffer){
+    DEBUG_PRINTF("chunkindexinbuffer = %d\n", chunkIndexInBuffer);
+    if(chunkIndexInBuffer == CHUNK_INVALID){
+        audioToStream.push({StreamingMessageType::StreamChunk, sampleIdentifier, chunkIndex, -1});
+        streamNeedsScheduling = true;
+    } else {
+        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent.chunks.size() && "AudioStreamer::streamChunk chunkIndexInBuffer out of range");
+        assert(parent.chunks.at(chunkIndexInBuffer).size() > 0 && "AudioStreamer::streamChunk chunk empty at read");
+        if(parent.chunks.at(chunkIndexInBuffer).at(0) == SAMPLE_NOT_LOADED_VALUE){
+            audioToStream.push({StreamingMessageType::StreamChunk, sampleIdentifier, chunkIndex, chunkIndexInBuffer});
+            streamNeedsScheduling = true;
+        }
+    }
+}
+
+void AudioStreamer::streamFromDisk(SampleIdentifier sampleIdentifier){
+    std::vector<int>& chunkIndicesInBuffer = parent.chunkIndicesInBuffer[sampleIdentifier];
+    int numberOfChunks = chunkIndicesInBuffer.size();
+    for(int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++){
+        assert(chunkIndex >= 0 && static_cast<size_t>(chunkIndex) < chunkIndicesInBuffer.size() && "AudioStreamer::streamFromDisk chunkIndex out of range");
+        int chunkIndexInBuffer = chunkIndicesInBuffer.at(chunkIndex);
+        streamChunk(sampleIdentifier, chunkIndex, chunkIndexInBuffer);
+    }
+}
+
+void AudioStreamer::streamStartFromDisk(SampleIdentifier sampleIdentifier){
+    assert(parent.chunkIndicesInBuffer[sampleIdentifier].size() > 0 && "AudioStreamer::streamStartFromDisk missing chunk 0");
+    int chunkIndexInBuffer = parent.chunkIndicesInBuffer[sampleIdentifier].at(0);
+    streamChunk(sampleIdentifier, 0, chunkIndexInBuffer);
+}
+
+void streamOnThread(void* arg){
+    DEBUG_PRINTF("\n\n streamOnThread\n\n");
+    AudioStreamer* audioStreamer = static_cast<AudioStreamer*>(arg);
+    audioStreamer->stream();
+}
+
+
+void AudioStreamer::stream(){ //stream thread only
+    StreamingMessage msg;
+    while(audioToStream.pop(msg)){
+        std::vector<int>& chunkIndicesInBuffer = s_chunkIndicesInBuffer[msg.sampleIdentifier];
+        int chunkIndexInBuffer = msg.chunkIndexInBuffer;
+        int chunkIndex = msg.chunkIndex;
+        if(msg.type == StreamingMessageType::StreamChunk){
+            if(chunkIndexInBuffer == -1){
+                chunkIndexInBuffer = parent.findFreeChunk();
+                ChunkState& chunkState = parent.chunkStates[chunkIndexInBuffer];
+                SampleIdentifier oldSampleIdentifier = {chunkState.ownerKey.load(std::memory_order_acquire), 
+                    chunkState.ownerVelocity.load(std::memory_order_acquire)};
+                int oldChunkIndex = chunkState.chunkIndex.load(std::memory_order_acquire);
+                chunkState.set(msg.sampleIdentifier, chunkIndex, true);
+                if(oldSampleIdentifier.first != -1){
+                    std::vector<int>& oldChunkIndicesInBuffer = s_chunkIndicesInBuffer[oldSampleIdentifier];
+                    assert(oldChunkIndicesInBuffer.size() > oldChunkIndex && "AudioStreamer::stream: oldChunkIndex out of range. This shuould never happen.There is a bug that s_chunkIndicesinbuffer is not synchronized right.");
+                    oldChunkIndicesInBuffer.at(oldChunkIndex) = CHUNK_INVALID;
                 }
             }
 
-            // Pass 3: voice stealing – drop the request that has been running the longest.
-            if(!freeChunkFound){
-                size_t maxProgress = 0;
-                std::pair<int,int> victimSample = {-1,-1};
-                for(const auto& entry : activeRequests){
-                    // Optionally skip the sample we are currently extending; remove this check if you prefer.
-                    if(entry.second.sampleIdentifier == sampleIdentifier){
-                        continue;
-                    }
-                    size_t progress = requestProgress(entry.second);
-                    if(progress >= maxProgress){
-                        maxProgress = progress;
-                        victimSample = entry.second.sampleIdentifier;
-                    }
-                }
-                if(victimSample.first == -1){
-                    // All active voices point to the same sample we’re extending; fall back to stealing that one.
-                    for(const auto& entry : activeRequests){
-                        size_t progress = requestProgress(entry.second);
-                        if(progress >= maxProgress){
-                            maxProgress = progress;
-                            victimSample = entry.second.sampleIdentifier;
-                        }
-                    }
-                }
-                if(victimSample.first != -1){
-                    sampleToEvict = victimSample;
-
-                    // Remove every request tied to the victim sample so no reader touches freed memory.
-                    for(auto it = activeRequests.begin(); it != activeRequests.end(); ){
-                        if(it->second.sampleIdentifier == victimSample){
-                            it = activeRequests.erase(it);
-                        } else {
-                            ++it;
-                        }
-                    }
-
-                    // Reuse the first chunk owned by that sample.
-                    for(size_t globalChunkIndex = 0; globalChunkIndex < streamedChunkOwnership.size(); ++globalChunkIndex){
-                        assert(streamedChunkOwnership.size() > globalChunkIndex);
-                        if(streamedChunkOwnership.at(globalChunkIndex) == victimSample){
-                            targetChunkIndex = static_cast<int>(globalChunkIndex);
-                            freeChunkFound = true;
-                            break;
-                        }
-                    }
+            int channel = 0; //maybe make stereo possible at some point
+            size_t sdFileReadStartIndex = chunkIndex * parent.chunkLength;
+            size_t sdFileReadEndIndex = sdFileReadStartIndex + parent.chunkLength;
+            auto lengthIt = parent.availableSamples.find(msg.sampleIdentifier);
+            if(lengthIt == parent.availableSamples.end()){
+                throw std::runtime_error("AudioStreamer::stream: sample to stream not in available samples.");
+            }
+            size_t sampleLengthInFrames = lengthIt->second;
+            if(sdFileReadEndIndex > sampleLengthInFrames){
+                sdFileReadEndIndex = sampleLengthInFrames;
+                //TODO: check if audiofileutiilities::getsamples is not overwriting the end of sample sentinels.
+                for(size_t i = sdFileReadEndIndex - sdFileReadStartIndex; i < parent.chunkLength; i++){
+                    assert(streamBuffer.size() > i && "AudioStreamer::stream streamBuffer sentinel write out of range");
+                    streamBuffer.at(i) = END_OF_SAMPLE;
                 }
             }
-
-            if(freeChunkFound){
-                if(sampleToEvict.first != -1){
-                    this->eraseSample(sampleToEvict);
+            if(AudioFileUtilities::getSamples(parent.filename(msg.sampleIdentifier),
+                        streamBuffer.data(), channel,
+                        sdFileReadStartIndex, sdFileReadEndIndex) == 0) {
+                assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent.chunks.size() && "AudioStreamer::stream chunkIndexInBuffer out of range during copy");
+                for(size_t i = 0; i < parent.chunkLength; i++){
+                    assert(parent.chunks.at(chunkIndexInBuffer).size() > i && "AudioStreamer::stream parent chunk write out of range");
+                    assert(streamBuffer.size() > i && "AudioStreamer::stream streamBuffer out of range");
+                    parent.chunks.at(chunkIndexInBuffer).at(i) = streamBuffer.at(i);
                 }
-                assert(targetChunkIndex >= 0);
-                size_t chunkOffset = static_cast<size_t>(targetChunkIndex) * chunkLength;
-                currentSampleStartIndex += chunkOffset;
-                assert(buffer.size() >= currentSampleStartIndex + chunkLength);
-                chunkStartIndices[sampleIdentifier].push_back(currentSampleStartIndex);
-                assert(streamedChunkOwnership.size() > static_cast<size_t>(targetChunkIndex));
-                streamedChunkOwnership.at(static_cast<size_t>(targetChunkIndex)) = sampleIdentifier;
+                parent.chunkStates[chunkIndexInBuffer].set(msg.sampleIdentifier, chunkIndex, true);
+                streamToAudio.push({StreamingMessageType::ChunkReady, msg.sampleIdentifier, chunkIndex, chunkIndexInBuffer});
+                if(chunkIndex < chunkIndicesInBuffer.size()){
+                    assert(chunkIndex < chunkIndicesInBuffer.size() && "AudioStreamer::stream chunkIndex out of range after load");
+                    chunkIndicesInBuffer.at(chunkIndex) = chunkIndexInBuffer;
+                } else if(chunkIndex == chunkIndicesInBuffer.size()){
+                    chunkIndicesInBuffer.push_back(chunkIndexInBuffer);
+                    DEBUG_PRINTF("\n\n\nWARNING\n\n\n\n\nmutating chunkIndicesInBuffer. exceeded expectedlength\n");
+                } else {
+                    throw std::runtime_error("AudioStreamer::streamOnThread streaming chunks not in regular order. Not implemented yet and should generally not happen case 1.\n");
+                }
             } else {
-                DEBUG_PRINTF("StreamingBuffer::streamSamples: no free chunk found to load sample for sampleId1 %d sampleId2 %d. buffer too small.\n", sampleIdentifier.first, sampleIdentifier.second);
-                throw std::runtime_error("StreamingBuffer::streamSamples: no free chunk found. buffer too small.");
-            }
-
-
-            //--------------------DO THE ACTUAL STREAM OF THE CHUNK----------------------
-            //TODO: make stereo to mono as above.
-            int channel = 0;
-            //DEBUG_PRINTF("loading chunk from sdcardindex %d\n", sdFileReadEndIndex);
-            assert(buffer.size() >= currentSampleStartIndex + chunkLength);
-            if(AudioFileUtilities::getSamples(filenames[sampleIdentifier], buffer.data() + currentSampleStartIndex, channel, sdFileReadStartIndex, sdFileReadEndIndex) == 0) {
-                //DEBUG_PRINTF("loaded chunk at bufferId: %zu from sdcardfileId: %zu  %s\n", currentSampleStartIndex, sdFileReadStartIndex,  filenames[sampleIdentifier].c_str());
-            } else {
-                DEBUG_PRINTF("failed to load sample %s\n", filenames[sampleIdentifier].c_str());
+                DEBUG_PRINTF("failed to load sample %s\n", parent.filename(msg.sampleIdentifier).c_str());
                 throw std::runtime_error("StreamingBuffer::initForFolder: failed to load sample");
             }
         }
-    }
-}
-
-void StreamingBuffer::streamSamples(){
-    //TODO: eliminate race condition when starts were just loaded and immediately a request is made.
-    DEBUG_PRINTF("stream on thread----------------------\n");
-    assert(resourceManager != nullptr);
-
-    auto finishJob = [this](StreamJobKind kind, bool markCompleted){
-        if(kind == StreamJobKind::Starts){
-            const uint32_t jobId = activeStartJobId.exchange(0, std::memory_order_acq_rel);
-            if(markCompleted && jobId != 0){
-                startJobsCompleted.store(jobId, std::memory_order_release);
-            }
-        } else if(kind == StreamJobKind::Chunks){
-            const uint32_t jobId = activeChunkJobId.exchange(0, std::memory_order_acq_rel);
-            if(markCompleted && jobId != 0){
-                chunkJobsCompleted.store(jobId, std::memory_order_release);
+        if(msg.type == StreamingMessageType::AssignChunk){
+            if(chunkIndex < chunkIndicesInBuffer.size()){
+                assert(chunkIndex < chunkIndicesInBuffer.size() && "AudioStreamer::stream AssignChunk index out of range");
+                chunkIndicesInBuffer.at(chunkIndex) = chunkIndexInBuffer;
+            } else if(chunkIndex == chunkIndicesInBuffer.size()){
+                chunkIndicesInBuffer.push_back(chunkIndexInBuffer);
+                DEBUG_PRINTF("\n\n\nWARNING\n\n\n\n\nmutating chunkIndicesInBuffer. exceeded expectedmaxlength v2\n");
+            } else {
+                throw std::runtime_error("AudioStreamer::streamOnThread streaming chunks not in regular order. Not implemented yet and should generally not happen case 2.\n");
             }
         }
-    };
 
-    StreamJobKind job = jobInFlight.load(std::memory_order_acquire);
+        if(parent.mutateTaskInFlight.load(std::memory_order_acquire)){
+            streamingTaskInFlight.store(false, std::memory_order_release);
+            return;
+        }
+    }
+    streamingTaskInFlight.store(false, std::memory_order_release);
+}
 
-    auto clearJobInFlight = [this](){
-        jobInFlight.store(StreamJobKind::None, std::memory_order_release);
-    };
+void AudioStreamer::flushToDisk(SampleIdentifier sampleIdentifier){ // audiothread sending messages to flush thread
+    flushNeedsScheduling = true;
+    //A possible improvement would be to only protect chunks that are not flushed yet to have more space
+    //to write to but that is not necessary at the moment because space is not an issue
+    pendingFlushes.insert(sampleIdentifier);
+    parent.protectSample(sampleIdentifier);
+    std::vector<int>& chunkIndicesInBuffer = parent.chunkIndicesInBuffer[sampleIdentifier];
+    int numberOfChunks = chunkIndicesInBuffer.size();
+    audioToFlush.push({StreamingMessageType::FlushInfo, sampleIdentifier, numberOfChunks, numberOfChunks});
+    flushNeedsScheduling = true;
+    for(int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++){
+        assert(chunkIndex >= 0 && static_cast<size_t>(chunkIndex) < chunkIndicesInBuffer.size() && "AudioStreamer::flushToDisk chunkIndex out of range");
+        int chunkIndexInBuffer = chunkIndicesInBuffer.at(chunkIndex);
+        assert(chunkIndexInBuffer != CHUNK_INVALID && "AudioStreamer::flushToDisk trying to flush invalid chunk, should not happen");
+        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent.chunks.size() && "AudioStreamer::flushToDisk chunkIndexInBuffer out of range");
+        audioToFlush.push({StreamingMessageType::FlushChunk, sampleIdentifier, chunkIndex, chunkIndexInBuffer});
+        flushNeedsScheduling = true;
+    }
+}
 
-    try{
-        switch(job){
-            case StreamJobKind::Starts: {
-                streamStarts();
-                finishJob(StreamJobKind::Starts, true);
-                break;
+void flushOnThread(void* arg){
+    DEBUG_PRINTF("\n\flushOnThread\n\n");
+    AudioStreamer* audioStreamer = static_cast<AudioStreamer*>(arg);
+    audioStreamer->flush();
+}
+
+void AudioStreamer::flush(){ //flush thread only
+    StreamingMessage msg;
+    std::unordered_map<SampleIdentifier, WavWriter> wavWriters;
+    while(audioToFlush.pop(msg)){
+        if(parent.mutateTaskInFlight.load(std::memory_order_acquire)){
+            flushTaskInFlight.store(false, std::memory_order_release);
+            return;
+        }
+        if(msg.type == StreamingMessageType::FlushInfo){
+            wavWriters.insert(std::make_pair(
+                msg.sampleIdentifier,
+                WavWriter(parent.filename(msg.sampleIdentifier), parent.resourceManager, msg.chunkIndex * parent.chunkLength)
+            ));
+            f_numberOfFlushableChunks[msg.sampleIdentifier] = msg.chunkIndex;
+        }
+        if(msg.type == StreamingMessageType::FlushChunk){
+            //potential concurrent read, however not so bad since 1 the chunk is still prtected to will not be written to and 2 with only 1 core
+            //on the cpu i think concurrent reads on a constant array should not make too many problems.
+            auto writerIt = wavWriters.find(msg.sampleIdentifier);
+            if(writerIt == wavWriters.end()){
+                throw std::runtime_error("AudioStreamer::flush: no wav writer for sampleIdentifier");
             }
-            case StreamJobKind::Chunks: {
-                streamChunks();
-                finishJob(StreamJobKind::Chunks, true);
-                break;
+            for(size_t i = 0; i < parent.chunkLength; i++){
+                assert(msg.chunkIndexInBuffer >= 0 && static_cast<size_t>(msg.chunkIndexInBuffer) < parent.chunks.size() && "AudioStreamer::flush chunkIndexInBuffer out of range");
+                assert(parent.chunks.at(msg.chunkIndexInBuffer).size() > i && "AudioStreamer::flush chunk data out of range");
+                float nextFrame = parent.chunks.at(msg.chunkIndexInBuffer).at(i);
+                if(nextFrame == END_OF_SAMPLE){
+                    flushTaskInFlight.store(false, std::memory_order_release);
+                    return;
+                }
+                assert(flushBuffer.size() > i && "AudioStreamer::flush flushBuffer out of range");
+                flushBuffer.at(i) = nextFrame;
             }
-            case StreamJobKind::None:
-            default:
-                printf("streamSamples invoked without a pending job\n");
-                break;
+            writerIt->second.writeChunk(msg.chunkIndex * parent.chunkLength, flushBuffer);
+            if(msg.chunkIndex == f_numberOfFlushableChunks[msg.sampleIdentifier] - 1){
+                wavWriters.erase(writerIt);
+                flushToAudio.push({StreamingMessageType::FlushComplete, msg.sampleIdentifier, -1, -1});
+            }
         }
-    } catch(const std::exception& e){
-        printf("streamSamples exception: %s\n", e.what());
-        finishJob(job, true);
-    } catch(...){
-        printf("streamSamples exception: unknown error\n");
-        finishJob(job, true);
     }
-
-    clearJobInFlight();
-    printf("stream on thread complete ----------------------\n");
-    return;
+    flushTaskInFlight.store(false, std::memory_order_release);
 }
 
-void StreamingBuffer::clearStreamingChunks(){
-    for(auto& sampleIdentifier: streamedChunkOwnership){
-        sampleIdentifier = {-1,-1};
-    }
-    fullyLoadedSamples.clear();
-}
-
-void StreamingBuffer::clearContainers(){
-    filenames.clear();
-    availableSamples.clear();
-    pendingSamplesToLoad.clear();
-    fullyLoadedSamples.clear();
-    sampleLengths.clear();
-    streamedChunkOwnership.clear();
-    chunkStartIndices.clear();
-    activeRequests.clear();
-    sdCardReadIndices.clear();
-}
-
-void StreamingBuffer::printInfo() const {
-    printf("StreamingBuffer '%s' info\n", bufferName.c_str());
-    printf("  folder: %s\n", folderPath.c_str());
-    printf("  buffer size: %zu samples\n", buffer.size());
-    printf("  chunk length: %zu samples\n", chunkLength);
-    printf("  availableBufferLength: %zu\n", availableBufferLength);
-    printf("  streamedChunkAreaStartIndex: %zu\n", streamedChunkAreaStartIndex);
-    auto job = jobInFlight.load(std::memory_order_acquire);
-    const char* jobLabel = "None";
-    if(job == StreamJobKind::Starts){
-        jobLabel = "Starts";
-    } else if(job == StreamJobKind::Chunks){
-        jobLabel = "Chunks";
-    }
-    printf("  jobInFlight: %s\n", jobLabel);
-    printf("  startJobs issued/completed: %u / %u\n",
-        getStartJobsIssued(), getStartJobsCompleted());
-    printf("  chunkJobs issued/completed: %u / %u\n",
-        getChunkJobsIssued(), getChunkJobsCompleted());
-    printf("  currentRequestId: %zu\n", currentRequestId);
-    printf("  pendingSamplesToLoad: %zu\n", pendingSamplesToLoad.size());
-    printf("  fullyLoadedSamples: %zu\n", fullyLoadedSamples.size());
-    printf("  activeRequests: %zu\n", activeRequests.size());
-
-    auto printSampleVector = [](const char* label, const std::vector<std::pair<int, int>>& items) {
-        printf("  %s (showing up to 5):\n", label);
-        size_t count = items.size() < 5 ? items.size() : 5;
-        for (size_t i = 0; i < count; ++i) {
-            printf("    [%zu] (%d, %d)\n", i, items[i].first, items[i].second);
+void AudioStreamer::processBlockwise(){
+    /////////////////////Message passing part.
+    StreamingMessage msg;
+    while(streamToAudio.pop(msg)){
+        std::vector<int>& chunkIndicesInBuffer = parent.chunkIndicesInBuffer[msg.sampleIdentifier];
+        if(msg.type == StreamingMessageType::ChunkReady){
+            if(msg.chunkIndex < chunkIndicesInBuffer.size()){
+                assert(msg.chunkIndex < chunkIndicesInBuffer.size() && "AudioStreamer::processBlockwise ChunkReady index out of range");
+                chunkIndicesInBuffer.at(msg.chunkIndex) = msg.chunkIndexInBuffer;
+            } else if(msg.chunkIndex == chunkIndicesInBuffer.size()){
+                chunkIndicesInBuffer.push_back(msg.chunkIndexInBuffer);
+                DEBUG_PRINTF("\n\n\nWARNING\n\n\n\n\nmutating chunkIndicesInBuffer. exceeded expectedlength v3\n");
+            } else {
+                throw std::runtime_error("StreamingBuffer::processBlockwise Receiving chunks not in regular order. Not implemented yet and should generally not happen.\n");
+            }
         }
-        if (items.size() > count) {
-            printf("    ... (%zu more)\n", items.size() - count);
-        }
-    };
-
-    printSampleVector("availableSamples", availableSamples);
-    printSampleVector("pendingSamplesToLoad", pendingSamplesToLoad);
-    printSampleVector("fullyLoadedSamples", fullyLoadedSamples);
-
-    printf("  filenames (showing up to 5):\n");
-    size_t filenamesShown = 0;
-    for (const auto& entry : filenames) {
-        printf("    (%d, %d) -> %s\n", entry.first.first, entry.first.second, entry.second.c_str());
-        if (++filenamesShown >= 5) {
-            break;
+        if(msg.type == StreamingMessageType::InvalidatedChunk){
+            assert(msg.chunkIndex < chunkIndicesInBuffer.size() && "AudioStreamer::processBlockwise InvalidatedChunk index out of range");
+            chunkIndicesInBuffer.at(msg.chunkIndex) = CHUNK_INVALID;
         }
     }
-    if (filenames.size() > filenamesShown) {
-        printf("    ... (%zu more)\n", filenames.size() - filenamesShown);
-    }
+    while(flushToAudio.pop(msg)){
+        if(msg.type == StreamingMessageType::FlushComplete){
+            pendingFlushes.erase(msg.sampleIdentifier);
+            //Is there an iterator living on the sample? if not unprotect it.
+            bool exists = std::any_of(
+                parent.iterators.begin(),
+                parent.iterators.end(),
+                [&](const StreamingBufferIterator& iter) {
+                    return iter.sampleIdentifier == msg.sampleIdentifier;
+                }
+            );
 
-    printf("  sampleLengths (showing up to 5):\n");
-    size_t sampleLengthsShown = 0;
-    for (const auto& entry : sampleLengths) {
-        printf("    (%d, %d) -> %zu\n", entry.first.first, entry.first.second, entry.second);
-        if (++sampleLengthsShown >= 5) {
-            break;
+            if (!exists) {
+                // No iterator there -> no need to protect anymore
+                parent.unProtectSample(msg.sampleIdentifier);
+            }
         }
     }
-    if (sampleLengths.size() > sampleLengthsShown) {
-        printf("    ... (%zu more)\n", sampleLengths.size() - sampleLengthsShown);
-    }
-
-    printf("  streamedChunkOwnership (showing up to 5):\n");
-    size_t chunkOwnershipCount = streamedChunkOwnership.size() < 5 ? streamedChunkOwnership.size() : 5;
-    for (size_t i = 0; i < chunkOwnershipCount; ++i) {
-        printf("    [%zu] (%d, %d)\n", i, streamedChunkOwnership[i].first, streamedChunkOwnership[i].second);
-    }
-    if (streamedChunkOwnership.size() > chunkOwnershipCount) {
-        printf("    ... (%zu more)\n", streamedChunkOwnership.size() - chunkOwnershipCount);
-    }
-
-    printf("  chunkStartIndices (showing up to 5 entries):\n");
-    size_t chunkStartIndicesShown = 0;
-    for (const auto& entry : chunkStartIndices) {
-        printf("    (%d, %d):", entry.first.first, entry.first.second);
-        size_t indicesToShow = entry.second.size() < 5 ? entry.second.size() : 5;
-        for (size_t i = 0; i < indicesToShow; ++i) {
-            printf(" %zu", entry.second[i]);
-        }
-        if (entry.second.size() > indicesToShow) {
-            printf(" ...");
-        }
-        printf("\n");
-        if (++chunkStartIndicesShown >= 5) {
-            break;
+    ///////////////////////task management part
+    if(streamNeedsScheduling && !parent.mutateTaskInFlight.load(std::memory_order_acquire)){
+        bool expected = false;
+        if(streamingTaskInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel)){
+            int scheduleResponse = Bela_scheduleAuxiliaryTask(streamSamplesTask);
+            if(scheduleResponse == 0){
+                streamNeedsScheduling = false;
+            } else {
+                streamingTaskInFlight.store(false, std::memory_order_release);
+                if(scheduleResponse != EBUSY){
+                    DEBUG_RT_PRINTF("Audiostreamer::processBlockwise(): Bela_scheduleAuxiliaryTask sent error code: %d\n", scheduleResponse);
+                }
+            }
         }
     }
-    if (chunkStartIndices.size() > chunkStartIndicesShown) {
-        printf("    ... (%zu more)\n", chunkStartIndices.size() - chunkStartIndicesShown);
-    }
-
-    printf("  sdCardReadIndices (showing up to 5):\n");
-    size_t sdCardIndicesShown = 0;
-    for (const auto& entry : sdCardReadIndices) {
-        printf("    (%d, %d) -> %zu\n", entry.first.first, entry.first.second, entry.second);
-        if (++sdCardIndicesShown >= 5) {
-            break;
+    if(flushNeedsScheduling && !parent.mutateTaskInFlight.load(std::memory_order_acquire)){
+        bool expected = false;
+        if(flushTaskInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel)){
+            int scheduleResponse = Bela_scheduleAuxiliaryTask(flushToDiskTask);
+            if(scheduleResponse == 0){
+                flushNeedsScheduling = false;
+            } else {
+                flushTaskInFlight.store(false, std::memory_order_release);
+                if(scheduleResponse != EBUSY){
+                    DEBUG_RT_PRINTF("Audiostreamer::processBlockwise(): Bela_scheduleAuxiliaryTask sent error code: %d\n", scheduleResponse);
+                }
+            }
         }
     }
-    if (sdCardReadIndices.size() > sdCardIndicesShown) {
-        printf("    ... (%zu more)\n", sdCardReadIndices.size() - sdCardIndicesShown);
-    }
-
-    printf("  activeRequests (showing up to 5):\n");
-    size_t requestsShown = 0;
-    for (const auto& entry : activeRequests) {
-        printf("    request %zu -> (%d, %d)\n", entry.first, entry.second.sampleIdentifier.first, entry.second.sampleIdentifier.second);
-        if (++requestsShown >= 5) {
-            break;
-        }
-    }
-    if (activeRequests.size() > requestsShown) {
-        printf("    ... (%zu more)\n", activeRequests.size() - requestsShown);
-    }
-}
-
-bool StreamingBuffer::isStreaming() const {
-    return jobInFlight.load(std::memory_order_acquire) != StreamJobKind::None;
-}
-
-uint32_t StreamingBuffer::getStartJobsIssued() const {
-    return startJobsIssued.load(std::memory_order_acquire);
-}
-
-uint32_t StreamingBuffer::getStartJobsCompleted() const {
-    return startJobsCompleted.load(std::memory_order_acquire);
-}
-
-uint32_t StreamingBuffer::getChunkJobsIssued() const {
-    return chunkJobsIssued.load(std::memory_order_acquire);
-}
-
-uint32_t StreamingBuffer::getChunkJobsCompleted() const {
-    return chunkJobsCompleted.load(std::memory_order_acquire);
 }

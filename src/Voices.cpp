@@ -6,28 +6,36 @@
 #include "../include/StreamingBuffer.h"
 #include <cassert>
 
-Voice::Voice(StreamingBuffer* buffer, int note, int velocity, ResourceManager* resourceManager, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat)
-:  note(note), velocity(velocity), resourceManager(resourceManager), buffer(buffer),
+Voice::Voice(StreamingBufferIterator& iterator,
+	ResourceManager* resourceManager,
+	float attack, float decay, float sustain, float release,
+	float gain, float playbackRate, bool repeat)
+:  iterator(&iterator),
+	note(iterator.sampleIdentifier.first), velocity(iterator.sampleIdentifier.second),
+	resourceManager(resourceManager),
 	gain(gain),
 	playbackRate(playbackRate), repeat(repeat) {
 	assert(resourceManager != nullptr);
-	assert(buffer != nullptr);
 	adsr = ADSR{attack, decay, sustain, release, resourceManager};
 	adsr.init();
 	if(floatIsEqual(playbackRate, 1.0f)) playbackRateIsOne = true;
-	requestId = buffer->requestSample({note, velocity});
 }
     
 float Voice::process(){ // TODO: unelegant with the tuple, do differently
-	assert(buffer != nullptr);
+	assert(iterator != nullptr);
 	assert(resourceManager != nullptr);
+	if(playbackRateIsOne){
+		(*iterator)++;
+		return gain * adsr.process() * *(*iterator);
+	}
 	if((int)(position + playbackRate) > (int)position){
 		currentSample = nextSample;
-		nextSample = buffer->getNextSample(requestId);
+		(*iterator)++;
+		nextSample = *(*iterator);
 		if(nextSample == resourceManager->END_OF_SAMPLE){
 			if(repeat){
 				position = 0.0f;
-				requestId = buffer->requestSample({note, velocity});
+				//TODO: make this loop around.
 			}else{
 				adsr.instantOff();
 				return 0.0f;
@@ -36,13 +44,8 @@ float Voice::process(){ // TODO: unelegant with the tuple, do differently
 	}
 	position += playbackRate;
 	float frame = 0.0f;
-	if(playbackRateIsOne){
-		frame = currentSample;
-	}
-	else{
-		float diff = position - (int)position;
-		frame = currentSample * (1-diff) + nextSample * diff;
-	}
+	float diff = position - (int)position;
+	frame = currentSample * (1-diff) + nextSample * diff;
 	return gain * adsr.process() * frame;
 }
 
@@ -63,15 +66,20 @@ float Voices::process(){
 }
 
 
-void Voices::triggerVoice(StreamingBuffer* buffer, int note, int velocity, float attack, float decay, float sustain, float release, float gain, float playbackRate, bool repeat){
-	assert(buffer != nullptr);
-	Voice newVoice = Voice(buffer, note, velocity, resourceManager, attack, decay, sustain, release, gain, playbackRate, repeat);
+void Voices::triggerVoice(StreamingBufferIterator& iterator,
+		float gain, float playbackRate, bool repeat,
+		float attack, float decay, float sustain, float release){
+	Voice newVoice = Voice(iterator,
+		resourceManager,
+		attack, decay, sustain, release,
+		gain, playbackRate, repeat);
 	if((int)activeVoices.size() >= maxVoices) {
         // Voice stealing: remove the oldest voice
         activeVoices.erase(activeVoices.begin());
     }
 	activeVoices.push_back(newVoice);
 }
+
 
 
 void Voices::triggerOff(int note){

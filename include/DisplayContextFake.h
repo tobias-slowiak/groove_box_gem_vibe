@@ -32,7 +32,7 @@ public:
 	
 	void setProgress(int displayNumber, float percentage) override;
 	
-	AuxiliaryTask& getDisplayTask() override;
+	TaskWrapper& getDisplayTask() override;
 	
 	void renderDisplay() override;
 	

@@ -8,15 +8,7 @@
 #include "../include/DisplayContextReal.h"
 #include "../include/ResourceManager.h"
 #include "../include/DebugLog.h"
-
-///////////////////////////////////////////NONMEMBER-FUNCTIONS
-
-void displayThreadFunction(void* arg) {
-	DisplayContextReal* displayContext = static_cast<DisplayContextReal*>(arg);
-	assert(displayContext != nullptr);
-	displayContext->drainPendingDisplayUpdates();
-}
-
+#include "../include/TaskWrapper.h"
 
 
 
@@ -49,10 +41,11 @@ std::vector<U8G2*> initU8G2s(){
 //////////////////////////////////MEMBER FUNCTIONS
 
 
-DisplayContextReal::DisplayContextReal(ResourceManager* resourceManager, std::vector<U8G2*> u8g2s): resourceManager(resourceManager), u8g2s(u8g2s){
+DisplayContextReal::DisplayContextReal(ResourceManager* resourceManager, std::vector<U8G2*> u8g2s)
+		: resourceManager(resourceManager), u8g2s(u8g2s),
+		lines(std::vector<std::vector<std::string>>{std::vector<std::string>(NUM_LINES,""), std::vector<std::string>(NUM_LINES,"")}),
+		displayTask(this, 50, "displayTask"){
 	assert(resourceManager != nullptr);
-	lines = std::vector<std::vector<std::string>>{std::vector<std::string>(NUM_LINES,""), std::vector<std::string>(NUM_LINES,"")};
-	displayTask = Bela_createAuxiliaryTask(displayThreadFunction, 50, "displayTask", (void*)this);
 }
 
 void DisplayContextReal::initDisplayContext() {
@@ -66,25 +59,11 @@ void DisplayContextReal::initDisplayContext() {
 		this->setLines(0,0,"Hi! :)","Let me", "brush up", "here");
 		this->setLines(1,0, "real quick", "Thank you! :)");
 	}
-	flushPendingUpdatesSync();
+	displayTask.processBlockwise();
 }
 
 void DisplayContextReal::processBlockwise() {
-	assert(resourceManager != nullptr);
-	if(!hasPendingDisplayUpdate()){
-		return;
-	}
-	bool expected = false;
-	if(!displayTaskInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel)){
-		return;
-	}
-	int scheduleResponse = Bela_scheduleAuxiliaryTask(displayTask);
-	if(scheduleResponse != 0){
-		displayTaskInFlight.store(false, std::memory_order_release);
-		if(scheduleResponse != EBUSY){
-			DEBUG_RT_PRINTF("DisplayContextReal::processBlockwise(): Bela_scheduleAuxiliaryTask sent error code: %d\n", scheduleResponse);
-		}
-	}
+	displayTask.processBlockwise();
 }
 
 void DisplayContextReal::setLines(int displayNumber, int lineNumber, std::string line0, std::string line1, std::string line2, std::string line3) {
@@ -105,12 +84,12 @@ void DisplayContextReal::setLines(int displayNumber, int lineNumber, std::string
 		assert(displayLines.size() > static_cast<size_t>(lineNumber + 3));
 		displayLines.at(lineNumber + 3) = line3;
 	}
-	requestDisplayUpdate();
+	setScheduleFlag("displayTask");
 }
 
 void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines){
 	this->lines = lines;
-	requestDisplayUpdate();
+	setScheduleFlag("displayTask");
 }
 
 std::string DisplayContextReal::getLine(int displayNumber, int lineNumber) {
@@ -128,10 +107,10 @@ void DisplayContextReal::setProgress(int displayNumber, float percentage) {
 		//code to erase progress bar;
 		progressDisplay = -1;
 	}
-	requestDisplayUpdate();
+	setScheduleFlag("displayTask");
 }
 
-AuxiliaryTask& DisplayContextReal::getDisplayTask() {
+TaskWrapper& DisplayContextReal::getDisplayTask() {
 	return displayTask;
 }
 
@@ -158,44 +137,16 @@ void DisplayContextReal::renderDisplay() {
 	}
 }
 
-void DisplayContextReal::requestDisplayUpdate(){
-	displayUpdatesRequested.fetch_add(1, std::memory_order_relaxed);
-	if(resourceManager != nullptr){
-		resourceManager->setUpdateDisplayFlag(true);
+void DisplayContextReal::setScheduleFlag(std::string& taskName){
+	if(taskName == "displayTask"){
+		displayTask.setScheduleFlag();
 	}
 }
 
-bool DisplayContextReal::hasPendingDisplayUpdate() const {
-	const uint32_t rendered = displayUpdatesRendered.load(std::memory_order_acquire);
-	const uint32_t requested = displayUpdatesRequested.load(std::memory_order_acquire);
-	return rendered < requested;
-}
-
-void DisplayContextReal::drainPendingDisplayUpdates(){
-	assert(resourceManager != nullptr);
-	while(true){
-		const uint32_t target = displayUpdatesRequested.load(std::memory_order_acquire);
-		const uint32_t rendered = displayUpdatesRendered.load(std::memory_order_acquire);
-		if(rendered >= target){
-			break;
-		}
+void DisplayContextReal::taskJob(const std::string& taskName){
+	if(taskName == "displayTask"){
 		renderDisplay();
-		displayUpdatesRendered.store(target, std::memory_order_release);
-	}
-	if(!hasPendingDisplayUpdate()){
-		resourceManager->setUpdateDisplayFlag(false);
-	}
-	displayTaskInFlight.store(false, std::memory_order_release);
-}
-
-void DisplayContextReal::flushPendingUpdatesSync(){
-	if(resourceManager == nullptr){
 		return;
 	}
-	while(hasPendingDisplayUpdate()){
-		const uint32_t target = displayUpdatesRequested.load(std::memory_order_acquire);
-		renderDisplay();
-		displayUpdatesRendered.store(target, std::memory_order_release);
-	}
-	resourceManager->setUpdateDisplayFlag(false);
+	throw std::runtime_error("DisplayContextReal::taskJob invoked with task name " + std::to_string(taskName))
 }

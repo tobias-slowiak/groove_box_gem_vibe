@@ -64,7 +64,6 @@ public:
 	
 	std::atomic<bool>& getUpdateDisplayFlag();
 	
-	void setUpdateDisplayFlag(bool val);
 	
 	///////////////////////////////PUBLIC VARIABLES
 	int audioFramesPerAnalogFrame;
