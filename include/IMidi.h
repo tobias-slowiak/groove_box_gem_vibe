@@ -25,6 +25,8 @@ public:
 	virtual int numAvailableMessages() = 0;
 
 	virtual IMidiChannelMessage* getNextChannelMessage() = 0;
+
+	virtual void pushMessage(int note, int velocity, int channel, MidiMessageType type) = 0;
 };
 
 class IMidi{

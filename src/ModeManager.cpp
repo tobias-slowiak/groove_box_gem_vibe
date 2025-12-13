@@ -103,22 +103,26 @@ void ModeManager::render(BelaContext *context, ResourceManager* resourceManager)
 }
 
 void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceManager){
+	static size_t blocksElapsed = 0;
+	blocksElapsed++;
+	
 	assert(context != nullptr);
 	assert(ResourceManager != nullptr);
 	assert(resourceManager != nullptr);
-	
+
 	IDisplayContext* display = resourceManager->getDisplayContext();
 	BelaInterface* interface = resourceManager->getBelaInterface();
 	
+	assert(display != nullptr);
 	display->processBlockwise();
+	assert(interface != nullptr);
 	interface->processBlockwise();
-	
+
 	static Mode selectionMode = Mode::TopMenu;
-	const int selectionIndex = static_cast<int>(selectionMode);
-	assert(selectionIndex >= 0 && modeNames.size() > static_cast<size_t>(selectionIndex));
-	std::string modeName = modeNames.at(selectionIndex);
-	display->setLines(0, 0, "Run Mode", modeName.c_str(), "push to ", "continue");
 	
+	if(blocksElapsed == 1){
+		display->setLines(0, 0, "Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue");
+	}
 	while(interface->numAvailableMessages() > 0){
 		InterfaceMessage msg = interface->getNextInterfaceMessage();
 #ifdef DEBUG_BUILD
@@ -139,6 +143,7 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceM
 					rt_printf("Running Test %s\n\n", modeNames.at(modeIndex).c_str());
 				}
 			}
+			display->setLines(0, 0, "Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue");
 		}
 	}
 }

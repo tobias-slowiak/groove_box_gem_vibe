@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <cassert>
+//compile
 
 #include "../include/IDisplayContext.h"
 #include "../include/DisplayContextFake.h"
@@ -37,11 +38,6 @@ void DisplayContextFake::setProgress(int displayNumber, float percentage)  {
 	assert(displayLines.size() > 3);
 	displayLines.at(3) = "progress: " + std::to_string(percentage);
 	this->renderDisplay();
-}
-
-TaskWrapper& DisplayContextFake::getDisplayTask()  {
-	rt_printf("ERROR: trying to getDisplayTask() pointer, but here we have a fake display context\n");
-	throw std::runtime_error("ERROR: trying to getDisplayTask() pointer, but here we have a fake display context\n");
 }
 
 void DisplayContextFake::renderDisplay()  {

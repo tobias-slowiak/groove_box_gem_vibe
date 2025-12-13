@@ -15,8 +15,15 @@
 #include "../include/BasicUtilities.h"
 #include "../include/DeviceMap.h"
 #include "../include/DebugLog.h"
+#include "../include/Voices.h"
+#include "../include/SamplePack.h"
 
 #include "../include/ResourceManager.h"
+
+
+const std::vector<std::string> instrumentStrings = {"Piano", "Standard_Bass"};
+
+
 
 Controller::Controller(ResourceManager* resourceManager): resourceManager(resourceManager){
 	assert(resourceManager != nullptr);
@@ -30,6 +37,9 @@ Controller::Controller(ResourceManager* resourceManager): resourceManager(resour
 	assert(displayContext != nullptr);
 	deviceMap = resourceManager->getDeviceMap();
 	assert(deviceMap != nullptr);
+	keyInstrumentSamplePack = resourceManager->getKeyInstrumentSamplePack();
+	assert(keyInstrumentSamplePack != nullptr);
+	voices = resourceManager->getVoices();
 	
 	currentSamplerIndex = 0;
 }
@@ -41,6 +51,7 @@ void Controller::processBlockwise(){
 	assert(keyMidi != nullptr);
 	assert(controlMidi != nullptr);
 	assert(displayContext != nullptr);
+	assert(keyInstrumentSamplePack != nullptr);
 	///////////////////////////////////////////////INPUTS
 	///////////////////processing the hardware interface
 	
@@ -101,6 +112,23 @@ void Controller::processBlockwise(){
 				case UIState::General:
 					break;
 				case UIState::Instrument:
+					if(rotEncNumber == 0){
+						if(event == RotaryEncoderEvent::Left){
+							currentInstrumentIndex--; //TODO: make this go around
+							//currentInstrumentIndex = currentInstrumentIndex % instrumentStrings.size();
+							//assert(currentInstrumentIndex >=0 && currentInstrumentIndex < instrumentStrings.size());
+							//currentInstrumentString = instrumentStrings.at(currentInstrumentIndex);
+						}
+						if(event == RotaryEncoderEvent::Right){
+							currentInstrumentIndex++; //TODO: make this go around
+							currentInstrumentIndex = currentInstrumentIndex % instrumentStrings.size();
+							assert(currentInstrumentIndex >=0 && currentInstrumentIndex < instrumentStrings.size());
+							currentInstrumentString = instrumentStrings.at(currentInstrumentIndex);
+						}
+						if(event == RotaryEncoderEvent::Push){
+							keyInstrumentSamplePack->initForFolder("/mnt/sdcard/Samples/" + currentInstrumentString);
+						}
+					}
 					break;
 				case UIState::Sampler:
 					if(rotEncNumber == 0){
@@ -131,9 +159,15 @@ void Controller::processBlockwise(){
         kmMessage->prettyPrint();
 #endif
         int note = kmMessage->getDataByte(0);
-        int velocity = kmMessage->getDataByte(1);
+        int midiVelocity = kmMessage->getDataByte(1);
         if(kmMessage->getChannel() == 0 && kmMessage->getType() != kmmControlChange){
-			rt_printf("playing note %d with velocity %d\n", note, velocity);
+			rt_printf("playing note %d with midiVelocity %d\n", note, midiVelocity);
+			//TODO: if in sample pack mode then this but if in osci mode then other.
+			if(kmMessage->getType() == kmmNoteOn)
+				keyInstrumentSamplePack->triggerVoice(note, midiVelocity);
+			if(kmMessage->getType() == kmmNoteOff){
+				keyInstrumentSamplePack->triggerOff(note);
+			}
         }
     }
     
@@ -145,10 +179,10 @@ void Controller::processBlockwise(){
     	cmMessage->prettyPrint();
 #endif
         int note = cmMessage->getDataByte(0);
-        int velocity = cmMessage->getDataByte(1);
+        int midiVelocity = cmMessage->getDataByte(1);
     	
     	if(cmMessage->getChannel() == 0){// && cmMessage.getType() == kmmControlChange){
-    		rt_printf("control message with note %d and velo %d\n", note, velocity);
+    		rt_printf("control message with note %d and midiVelocity %d\n", note, midiVelocity);
     	}
     }
     
@@ -159,6 +193,10 @@ void Controller::processBlockwise(){
     /////////////////LooperLights
 	if(looperStateHasChanged)
 		this->updateLooperLights();
+}
+
+float Controller::process(float inFrame){
+	return instrumentGain * voices->process();
 }
 
 void Controller::stateSwitch(int indexShift){

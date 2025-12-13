@@ -42,10 +42,12 @@ std::vector<U8G2*> initU8G2s(){
 
 
 DisplayContextReal::DisplayContextReal(ResourceManager* resourceManager, std::vector<U8G2*> u8g2s)
-		: resourceManager(resourceManager), u8g2s(u8g2s),
+		: resourceManager(resourceManager),
 		lines(std::vector<std::vector<std::string>>{std::vector<std::string>(NUM_LINES,""), std::vector<std::string>(NUM_LINES,"")}),
-		displayTask(this, 50, "displayTask"){
+		u8g2s(u8g2s),
+		renderTask(this, 70, "renderTask"){
 	assert(resourceManager != nullptr);
+	r_lines = lines;
 }
 
 void DisplayContextReal::initDisplayContext() {
@@ -59,11 +61,11 @@ void DisplayContextReal::initDisplayContext() {
 		this->setLines(0,0,"Hi! :)","Let me", "brush up", "here");
 		this->setLines(1,0, "real quick", "Thank you! :)");
 	}
-	displayTask.processBlockwise();
+	renderDisplay();
 }
 
 void DisplayContextReal::processBlockwise() {
-	displayTask.processBlockwise();
+	renderTask.taskCheckAndWorkMessages();
 }
 
 void DisplayContextReal::setLines(int displayNumber, int lineNumber, std::string line0, std::string line1, std::string line2, std::string line3) {
@@ -84,12 +86,20 @@ void DisplayContextReal::setLines(int displayNumber, int lineNumber, std::string
 		assert(displayLines.size() > static_cast<size_t>(lineNumber + 3));
 		displayLines.at(lineNumber + 3) = line3;
 	}
-	setScheduleFlag("displayTask");
+	sendTaskMessage();
 }
 
 void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines){
 	this->lines = lines;
-	setScheduleFlag("displayTask");
+	sendTaskMessage();
+}
+
+void DisplayContextReal::sendTaskMessage(){
+	DisplayMessage msg;
+	msg.lines = lines;
+	msg.progressDisplay = progressDisplay;
+	msg.progress = progress;
+	renderTask.pushMessage(TaskMessageTarget::TaskThread, msg);
 }
 
 std::string DisplayContextReal::getLine(int displayNumber, int lineNumber) {
@@ -107,12 +117,9 @@ void DisplayContextReal::setProgress(int displayNumber, float percentage) {
 		//code to erase progress bar;
 		progressDisplay = -1;
 	}
-	setScheduleFlag("displayTask");
+	sendTaskMessage();
 }
 
-TaskWrapper& DisplayContextReal::getDisplayTask() {
-	return displayTask;
-}
 
 void DisplayContextReal::renderDisplay() {
 	assert(resourceManager != nullptr);
@@ -121,14 +128,14 @@ void DisplayContextReal::renderDisplay() {
 	    U8G2* u8g2 = u8g2s.at(display);
 	    u8g2->clearBuffer();
 	    // Draw text lines
-	    assert(lines.size() > static_cast<size_t>(display));
-	    auto& displayLines = lines.at(display);
+	    assert(r_lines.size() > static_cast<size_t>(display));
+	    auto& displayLines = r_lines.at(display);
 	    for (int line = 0; line < NUM_LINES; ++line) {
 	        assert(displayLines.size() > static_cast<size_t>(line));
 	        u8g2->drawStr(0, line * LINE_HEIGHT, displayLines.at(line).c_str());
 	    }
-	    if(progressDisplay == display){
-		    int barWidth = static_cast<int>(progress * (SCREEN_WIDTH - 2));
+	    if(r_progressDisplay == display){
+		    int barWidth = static_cast<int>(r_progress * (SCREEN_WIDTH - 2));
 		    int barY = SCREEN_HEIGHT - PROGRESS_HEIGHT;
 		    u8g2->drawFrame(0, barY, SCREEN_WIDTH - 2, PROGRESS_HEIGHT);
 		    u8g2->drawBox(0, barY, barWidth, PROGRESS_HEIGHT);
@@ -137,16 +144,13 @@ void DisplayContextReal::renderDisplay() {
 	}
 }
 
-void DisplayContextReal::setScheduleFlag(std::string& taskName){
-	if(taskName == "displayTask"){
-		displayTask.setScheduleFlag();
-	}
-}
-
-void DisplayContextReal::taskJob(const std::string& taskName){
-	if(taskName == "displayTask"){
+void DisplayContextReal::taskWorkMessage(std::string& taskName, DisplayMessage msg){
+	if(taskName == "renderTask"){
+		r_lines = msg.lines;
+		r_progressDisplay = msg.progressDisplay;
+		r_progress = msg.progress;
 		renderDisplay();
 		return;
 	}
-	throw std::runtime_error("DisplayContextReal::taskJob invoked with task name " + std::to_string(taskName))
+	throw std::runtime_error("DisplayContextReal::taskWorkMessage invoked with task name " + taskName);
 }

@@ -1,4 +1,5 @@
 #pragma once
+//compile
 
 #include <limits>
 #include <libraries/sndfile/sndfile.h>
@@ -16,79 +17,15 @@
 
 #include <Bela.h>
 #include <libraries/AudioFile/AudioFile.h>
+#include "../include/SampleIdentifier.h"
 #include "../include/DebugLog.h"
 #include "../include/ResourceManager.h"
+#include "../include/StreamingMessage.h"
+#include "../include/TaskWrapper.h"
+#include "../include/AudioStreamer.h"
 
 class StreamingBuffer;
 class StreamingBufferIterator;
-
-//AI Generated hash - check if this works.
-// Hash for SampleIdentifier (pair<int,int>) tailored to expected 0–256 range
-using SampleIdentifier = std::pair<int, int>;
-
-namespace std {
-template <>
-struct hash<SampleIdentifier> {
-    size_t operator()(const SampleIdentifier& s) const noexcept {
-        return (static_cast<size_t>(s.first & 0x1ff) << 9) ^ static_cast<size_t>(s.second & 0x1ff);
-    }
-};
-} // namespace std
-
-
-//I might get race conditions here. it would be better to have an array of mutex locks for the states.
-struct ChunkState {
-    std::atomic<int> ownerKey{-1};
-    std::atomic<int> ownerVelocity{-1};
-    std::atomic<int> chunkIndex{-1};
-    std::atomic<bool> writeProtected{false};
-
-    void set(SampleIdentifier sampleIdentifier, int chunkIndex, bool writeProtected);
-};
-static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
-static constexpr float SAMPLE_NOT_LOADED_VALUE = std::numeric_limits<float>::lowest() + 1.0f;
-static constexpr int CHUNK_INVALID = std::numeric_limits<int>::max() - 1;
-static constexpr int ITERATOR_INVALID = std::numeric_limits<int>::max() - 2;
-
-enum class StreamingMessageType : uint8_t { ChunkReady,
-    InvalidatedChunk,
-    StreamChunk, 
-    AssignChunk, 
-    InitializeSample,
-    Clear, 
-    FlushInfo, 
-    FlushChunk, 
-    FlushComplete
-};
-
-struct StreamingMessage {
-    StreamingMessageType type;
-    SampleIdentifier sampleIdentifier;
-    int chunkIndex;
-    int chunkIndexInBuffer;
-};
-
-class StreamingMessageQueue {
-public:
-
-    StreamingMessageQueue() {
-        assert(messages.size() > 0  && "caught default smq ctor which should never trigger");}
-    
-    StreamingMessageQueue(size_t capacity): capacity(capacity){
-        assert(capacity > 0 && "why get 0 capacity on messagequeue?");
-        messages.resize(capacity);
-        assert(messages.size() > 0 && "what smq fuck?");}
-    
-    bool push(StreamingMessage value);
-
-    bool pop(StreamingMessage& out);
-
-private:
-    size_t capacity;
-    std::vector<StreamingMessage> messages;
-    std::atomic<size_t> tail{0};
-    std::atomic<size_t> head{0}; // producer-only
-};
 
 enum class SBIType {
     None,
@@ -109,7 +46,10 @@ class ElementProxy {
 //TODO: make them stop if mutate task in flight?
 class StreamingBufferIterator {
     public:
-        ElementProxy operator*(){return ElementProxy(*this);}
+        ElementProxy operator*(){
+            assert(parent != nullptr && "StreamingBufferIterator::operator* parent null");
+            return ElementProxy(*this);
+        }
 
         StreamingBufferIterator(StreamingBuffer* parent);
 
@@ -123,6 +63,8 @@ class StreamingBufferIterator {
 
         void initialize();
 
+        void release();
+
         SampleIdentifier sampleIdentifier;
 
     private:
@@ -134,6 +76,7 @@ class StreamingBufferIterator {
         StreamingBuffer* parent;
         std::vector<int>* chunkIndicesInBuffer;
         SBIType type = SBIType::None;
+        size_t sampleLength;
         int chunkIndex;
         size_t indexInChunk;
         int chunkIndexInBuffer;
@@ -141,75 +84,26 @@ class StreamingBufferIterator {
         float* data;
 };
 
+//TODO: when playing hard (many notes fast ) there is a problem that iterators get strange
+//pointers to chunk, so when hitting a note it starts out with a couple of right chunks, but
+//then it wildly jumps around in the chunks of multiple samples. so the assignment of chunks needs to
+//be mrore strict
 
-void streamOnThread(void* arg);
-void flushOnThread(void* arg);
-void mutateOnThread(void* arg);
+//I might get race conditions here. it would be better to have an array of mutex locks for the states.
+struct ChunkState {
+    std::atomic<int> ownerKey{-1};
+    std::atomic<int> ownerVelocity{-1};
+    std::atomic<int> chunkIndex{-1};
+    std::atomic<bool> writeProtected{false};
 
-class AudioStreamer{
-public:
-    //Audio thread only 
-    AudioStreamer(StreamingBuffer& streamingBuffer);
-
-    void streamChunk(SampleIdentifier sampleIdentifier, int chunkIndex, int chunkIndexInBuffer);
-
-    void streamFromDisk(SampleIdentifier sampleIdentifier);
-
-    void streamStartFromDisk(SampleIdentifier sampleIdentifier);
-
-    void flushToDisk(SampleIdentifier sampleIdentifier);
-
-    void processBlockwise();
-
-    //Stream Thread only
-
-    void stream();
-
-    //Flush Thread only
-    void flush();
-
-private:
-    enum class ScheduleStatus {
-        Scheduled,
-        Busy,
-        Error
-    };
-    friend class StreamingBuffer;
-    friend class StreamingBufferIterator;
-    StreamingBuffer& parent;
-    
-    //thread schedule flags
-    bool streamNeedsScheduling = false;
-    bool flushNeedsScheduling = false;
-
-    //Auxiliary Tasks
-    AuxiliaryTask streamSamplesTask;
-    AuxiliaryTask flushToDiskTask;
-    int streamSamplePrio = 50;
-    int flushToDiskPrio = 20;
-    std::string streamSamplesTaskName;
-    std::string flushToDiskTaskName;
-
-    //Messaging between threads
-    static constexpr size_t queueCapacity = 512;
-    StreamingMessageQueue audioToStream{queueCapacity};
-    StreamingMessageQueue audioToFlush{queueCapacity};
-    StreamingMessageQueue streamToAudio{queueCapacity};
-    StreamingMessageQueue flushToAudio{queueCapacity};
-
-    //Stream Thread Only
-    std::unordered_map<SampleIdentifier, std::vector<int>> s_chunkIndicesInBuffer; //synchronize with parent
-    std::vector<float> streamBuffer;
-
-    std::unordered_set<SampleIdentifier> pendingFlushes;
-    //Flush Thread Only
-    std::unordered_map<SampleIdentifier, int> f_numberOfFlushableChunks;
-    std::vector<float> flushBuffer;
-
-    //Job/Task management
-    std::atomic<bool> streamingTaskInFlight{false};
-    std::atomic<bool> flushTaskInFlight{false};
+    void set(SampleIdentifier sampleIdentifier, int chunkIndex, bool writeProtected);
 };
+static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
+static constexpr int CHUNK_INVALID = std::numeric_limits<int>::max() - 1;
+static constexpr int ITERATOR_INVALID = std::numeric_limits<int>::max() - 2;
+static constexpr int DEFAULT_STREAMING_CHUNK_SIZE = 8820;
+
+
 
 class StreamingBuffer {
 public:
@@ -222,15 +116,22 @@ public:
 
     ~StreamingBuffer();
 
+    void setFolderPath(std::string path){folderPath = path;}
+
     StreamingBufferIterator& begin(SampleIdentifier sampleIdentifier, SBIType type);
 
-    void streamStarts();
+    void sendStreamStartsMessages();
 
     void eraseIterator(StreamingBufferIterator& iterator);
 
+    void audioCheckAndWorkMessages();
+
     void processBlockwise();
 
-    void streamFromDisk(SampleIdentifier sampleIdentifier){audioStreamer.streamFromDisk(sampleIdentifier);}
+    //the two following methods are only for the bandwidth test
+    bool streamerIsInFlight(){return audioStreamer.streamerIsInFlight();}
+    
+    void streamFullSample(SampleIdentifier sampleIdentifier);
 
     void flushToDisk(SampleIdentifier sampleIdentifier){audioStreamer.flushToDisk(sampleIdentifier);}
 
@@ -240,28 +141,39 @@ public:
 
     void unProtectSample(SampleIdentifier sampleIdentifier);
 
-    void initializeSample(SampleIdentifier sampleIdentifier, size_t expectedSampleLengthInFrames);
+    void sendInitializeSampleMessage(SampleIdentifier sampleIdentifier, size_t expectedSampleLengthInFrames);
 
-    void initializeSamples(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
+    void sendInitializeSamplesMessages(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
+
+    void clear();
+
+    void initializeForNewSamplePack(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
 
     int findFreeChunk();
 
-    void mutate();
+    void stopWork();
 
-    void stream(){audioStreamer.stream();}
+    void mutate(StreamingMessage msg);
 
-    void clear();
+    void printInfo();
+
+    void printIterators();
+
+    void stream(StreamingMessage msg){audioStreamer.stream(msg);}
+
+    void taskWorkMessage(std::string& taskName, StreamingMessage msg);
 
 private:
     friend class AudioStreamer;
     friend class StreamingBufferIterator;
+    friend class SamplePack;
 
 
     ResourceManager* resourceManager;
     std::string bufferName;
     std::string folderPath;
     //chunk storage
-    int chunkLength = 8820;
+    int chunkLength = DEFAULT_STREAMING_CHUNK_SIZE;
 
     int totalNumberOfChunks;
     int totalNumberOfIterators;
@@ -295,20 +207,8 @@ private:
     the chunkIndicesInBuffer container
     */
     //Auxiliary Tasks
+    std::atomic<bool> mutateOngoing{false};
     int mutateDataPrio = 70;
     std::string mutateDataTaskName;
-    AuxiliaryTask MutateDataTask;
-
-    bool mutateDataTaskNeedsScheduling = false;
-
-    //Messaging between threads
-    static constexpr size_t mutateQueueCapacity = 512;
-    StreamingMessageQueue audioToMutate{mutateQueueCapacity};
-    StreamingMessageQueue mutateToAudio{mutateQueueCapacity};
-
-    //Mutate Thread Only
-    //buffers if needed
-
-    //Job/Task management
-    std::atomic<bool> mutateTaskInFlight{false};
+    TaskWrapper<StreamingBuffer, StreamingMessage> mutateDataTask;
 };

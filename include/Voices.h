@@ -1,5 +1,5 @@
 #pragma once
-
+//compile
 #include <vector>
 #include <math.h>
 #include <cassert>
@@ -8,15 +8,18 @@ class ResourceManager;
 class BasicUtilities;
 #include "ADSR.h"
 #include "StreamingBuffer.h"
+#include "StreamingBufferIterator.h"
 
+//TODO: iteratorptr is unelegant and also i think i only delete voices via stealing, would be better if they
+//got removed when done
 class Voice {
 public:
-	Voice(StreamingBufferIterator& iterator,
+	Voice(StreamingBufferIterator& iterator, int note, float playbackRate,
 		ResourceManager* resourceManager,
-		float attack = 0.0f, float decay = 0.0f, float sustain = 1.0f, float release = 0.0f,
-		float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false);
+		float attack = 0.01f, float decay = 0.0f, float sustain = 1.0f, float release = 0.0f,
+	    bool repeat = false);
 	
-    void noteOff(){adsr.noteOff();}
+    void noteOff();
         
 	float process();
 	
@@ -27,22 +30,22 @@ public:
 	bool isOn(){return adsr.isOn();}
 	
 private:
-	StreamingBufferIterator& iterator;
+	friend class Voices;
+	StreamingBufferIterator* iteratorPtr;
 	int note;
 	int velocity;
-	float gain = 1.0f;
 	float playbackRate = 1.0f;
 	bool repeat = false;
 
 	ResourceManager* resourceManager;
 	size_t requestId;
 
-	float currentSample = 0.0f;
-	float nextSample = 0.0f;
+	float leftFrame = 0.0f;
+	float rightFrame = 0.0f;
 	
 	bool playbackRateIsOne = false;
 
-	float position = 0.0f;
+	double position = 0.0;
 	ADSR adsr;
 };
 
@@ -57,7 +60,7 @@ public:
     void clear(){activeVoices.clear();}
     
     void triggerVoice(StreamingBufferIterator& iterator,
-		float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false,
+		int note, float playbackRate, bool repeat = false,
 		float attack = 0.0f, float decay = 0.0f, float sustain = 1.0f, float release = 0.1f);
 	
 	//TODO: trigger off all velocities of this note.

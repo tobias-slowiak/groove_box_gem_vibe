@@ -2,6 +2,7 @@
 
 #include <libraries/Midi/Midi.h>
 #include "IMidi.h"
+#include "DebugLog.h"
 
 class MidiChannelMessageReal: public IMidiChannelMessage{
 public:
@@ -31,10 +32,12 @@ private:
 class MidiParserReal: public IMidiParser{
 public:
 	MidiParserReal(MidiParser* parser): belaParser(parser){
+		assert(parser != nullptr);
 		msg = new MidiChannelMessageReal();
 	}
 	
-	int numAvailableMessages() override {return belaParser->numAvailableMessages();}
+	int numAvailableMessages() override {
+		return belaParser->numAvailableMessages();}
 
 	IMidiChannelMessage* getNextChannelMessage() override {
 		MidiChannelMessage nextBelaMsg = belaParser->getNextChannelMessage();
@@ -43,6 +46,10 @@ public:
 		msg->setType(nextBelaMsg.getType());
 		msg->setChannel(nextBelaMsg.getChannel());
 		return msg;
+	}
+
+	void pushMessage(int note, int velocity, int channel, MidiMessageType type) override {
+		DEBUG_RT_PRINTF("WARNING: pushing to MidiParserReal, should not happen\n");
 	}
 private:
 	MidiParser* belaParser;
@@ -53,13 +60,15 @@ class MidiReal: public IMidi{
 public:
 	MidiReal(){
 		midi = new Midi();
-		parser = new MidiParserReal(midi->getParser());
 	}
 	int readFrom(const char* port) override {return midi->readFrom(port);}
 	
 	int writeTo(const char* port) override {return midi->writeTo(port);}
 	
-	void enableParser(bool arg) override {midi->enableParser(arg);}
+	void enableParser(bool arg) override {
+		midi->enableParser(arg);
+		parser = new MidiParserReal(midi->getParser());
+	}
 	
 	IMidiParser* getParser() override {return parser;}
 private:

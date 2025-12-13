@@ -4,6 +4,7 @@
 #include "../include/DeviceMap.h"
 #include "../include/ResourceManager.h"
 
+#define LAUNCHKEY_46_MK1
 
 DeviceMap::DeviceMap(ResourceManager* resourceManager){
 

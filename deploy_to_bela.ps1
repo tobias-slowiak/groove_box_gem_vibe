@@ -68,6 +68,12 @@ function Get-RemoteDir([string]$RemotePath) {
     return $RemotePath.Substring(0, $idx)
 }
 
+function Sync-BelaClock {
+    $nowUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+    Write-Host "[bela] Syncing clock to host UTC: $nowUtc"
+    Invoke-Ssh "date -u -s '$nowUtc'"
+}
+
 Ensure-Tool "ssh"
 Ensure-Tool "scp"
 
@@ -125,6 +131,8 @@ Invoke-Ssh "mount | grep -q '^/dev/mmcblk0p1 on /mnt/sdcard ' || sudo mount /dev
 
 Write-Host "Reload systemctl"
 Invoke-Ssh "systemctl daemon-reload"
+
+Sync-BelaClock
 
 Invoke-Ssh "mkdir -p '$RemoteFolder' '$RemoteFolder/include' '$RemoteFolder/src'"
 

@@ -4,12 +4,17 @@
 #include <cmath>
 #include <cassert>
 #include <cstdint>
+#include<unordered_map>
+//compile
 
 #include "../include/ModeManager.h"
 #include "../include/ResourceManager.h"
 #include "../include/StreamingBuffer.h"
 #include "../include/IDisplayContext.h"
 #include "../include/BelaInterface.h"
+#include "../include/IMidi.h"
+#include "../include/MidiReal.h"
+#include "../include/MidiFake.h"
 #include "../include/Controller.h"
 #include "../include/BasicUtilities.h"
 #include "../include/Loopers.h"
@@ -85,6 +90,7 @@ void ModeManager::renderDisplayContextTest(BelaContext *context, ResourceManager
 	}
 }
 void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager* resourceManager){
+	
 	assert(context != nullptr);
 	assert(resourceManager != nullptr);
 	static int blocksElapsed = 0;
@@ -94,62 +100,43 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager* resour
 	SamplePack* sp = resourceManager->getKeyInstrumentSamplePack();
 	Voices* voices = resourceManager->getVoices();
 
+	//delayed start of playback bc otherwise it will stream too slow. investigate!
+
 	if(blocksElapsed == 1){
-		sp->triggerVoice({note,velocity});
+		sp->triggerVoice(33,10);
+		sp->triggerVoice(33,20);
+		sp->triggerVoice(36,10);
+		sp->triggerVoice(36,50);
+		sp->triggerVoice(39,10);
+		sp->triggerVoice(39,60);
 	}
-/*
-	if(blocksElapsed == 2) {
-		rt_printf("starting playback of testSample on repeat\n");
-		voices->triggerVoice(sb, note, velocity, 0, 0, 1, 0, 1, 1, true);
+
+	if(blocksElapsed == 10000){
+		sp->initForFolder("/mnt/sdcard/Samples/Standard_Bass");
 	}
-	
-	if(secondsElapsed(blocksElapsed, 2) ){
-		rt_printf("stopping playback of testSample on repeat\n");
-		resourceManager->getVoices()->triggerOff(note);
-	}
-	if(secondsElapsed(blocksElapsed, 3) ){
-		rt_printf("starting playback of testSample with long adsr on repeat\n");
-		resourceManager->getVoices()->triggerVoice(sb, note+3, velocity+5, 0.5, 0.5, 0.5, 0.5, 1, 1, true);
-	}
-	if(secondsElapsed(blocksElapsed, 5) ){
-		rt_printf("stopping playback of first testSample on repeat\n");
-		resourceManager->getVoices()->triggerOff(note+3);
-	}
-	if(secondsElapsed(blocksElapsed, 6)){
-		rt_printf("now creating a new voice every 0.1 s with increasing playbackrate\n");
-	}
-	if(blocksElapsed > 6 * resourceManager->blocksPerSecond){
-		if(blocksElapsed % (int)(0.1 * resourceManager->blocksPerSecond) == 0){
-			rt_printf("triggering note %d\n", note);
-			note += 3;
-			velocity++;
-			if(note > 33){
-				note = 21; //dont load too many samples to avoid saturation of streaming buffer
-				velocity = 1;
-			}
-			resourceManager->getVoices()->triggerVoice(sb, note, velocity, 0.01, 0.1, 0.7, 0.1, 0.5, 1, true);
+	static int sampleNumber = 0;
+	static int blockOffset = 0;
+	if(blocksElapsed == 30000 + blockOffset){
+		sampleNumber += 1;
+		if(sampleNumber == 10){
+			currentTestDone = true;
+			blocksElapsed = 0;
 		}
+		blockOffset += 500;
+		note += 3;
+		DEBUG_RT_PRINTF("\n\n\n sample %d \n\n\n", sampleNumber);
+		sp->triggerVoice(note,10);
 	}
-	if(secondsElapsed(blocksElapsed, 9.2) ){
-		rt_printf("\n\n\n\n\n\nshould be saturated now\n\n\n\n\n\n\n");
-	}
-	*/
-	
+
 	sp->processBlockwise();
 	for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++) {
-		float frame = voices->process();
+		float frame = 0.0f;
+		frame += voices->process() * 0.1;
 		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
             audioWrite(context, n, ch,  frame);
         }
 	}
 		
-	if(secondsElapsed(blocksElapsed, 120) ){
-		for(int i = 0; i <= 33; i++){
-			resourceManager->getVoices()->triggerOff(i);
-		}
-		currentTestDone = true;
-		blocksElapsed = 0;
-	}
 }
 
 /*
@@ -281,16 +268,44 @@ void ModeManager::renderMidiTest(BelaContext *context, ResourceManager* resource
 	blocksElapsed++;
 	
 	IMidi* keyMidi = resourceManager->getKeyMidi();
+	assert(keyMidi != nullptr);
 	IMidi* controlMidi = resourceManager->getControlMidi();
+	assert(controlMidi != nullptr);
 	
-	while(keyMidi->getParser()->numAvailableMessages() > 0) {
-        IMidiChannelMessage* message = keyMidi->getParser()->getNextChannelMessage();
-        message->prettyPrint();
+	IMidiParser* parser = keyMidi->getParser();
+	assert(parser != nullptr);
+	
+	/*Sending messages in MidiFake Case*/
+	if(!resourceManager->keyMidiConnected){
+		if(secondsElapsed(blocksElapsed, 1)){
+			parser->pushMessage(33, 64, 0, kmmNoteOn);
+		}
 	}
-	while(controlMidi->getParser()->numAvailableMessages() > 0){
-		IMidiChannelMessage* message = controlMidi->getParser()->getNextChannelMessage();
+	if(!resourceManager->controlMidiConnected){
+		if(secondsElapsed(blocksElapsed, 2)){
+			controlMidi->getParser()->pushMessage(10, 64, 9, kmmNoteOn);
+		}
+	}
+	/*MidiFake case done*/
+
+
+	while(parser->numAvailableMessages() > 0) { //this line makes segfault if ...
+        IMidiChannelMessage* message = parser->getNextChannelMessage();
+		assert(message != nullptr);
+        message->prettyPrint();
+		//compile
+	}
+		
+	
+	parser = controlMidi->getParser();
+	assert(parser != nullptr);
+	while(parser->numAvailableMessages() > 0){
+		IMidiChannelMessage* message = parser->getNextChannelMessage();
+		assert(message != nullptr);
 		message->prettyPrint();
 	}
+		
+		
 	//TODO: change the ending and also make it testable without prints.
 	if(secondsElapsed(blocksElapsed, 5) ){
 		currentTestDone = true;
@@ -304,18 +319,36 @@ void ModeManager::renderControllerTest(BelaContext *context, ResourceManager* re
 	static int blocksElapsed = 0;
 	blocksElapsed++;
 
+	/*Sending messages in MidiFake Case*/
+	IMidi* keyMidi = resourceManager->getKeyMidi();
+	if(!resourceManager->keyMidiConnected){
+		if(secondsElapsed(blocksElapsed, 1) || secondsElapsed(blocksElapsed, 2)){
+			keyMidi->getParser()->pushMessage(33, 1, 0, kmmNoteOn);
+		}
+	}
+
+	/*MidiFake case done*/
+
 	Controller* controller = resourceManager->getController();
-	
+	SamplePack* samplePack = resourceManager->getKeyInstrumentSamplePack();
 	controller->processBlockwise();
+	samplePack->processBlockwise();
 	
 	if((blocksElapsed * resourceManager->blocksPerSecond)%2 == 0){
 		//TODO: do something
 	}
-	if(secondsElapsed(blocksElapsed, 10) ){
+	if(secondsElapsed(blocksElapsed, 20) ){
 		currentTestDone = true;
 		blocksElapsed = 0;
 	}
-
+	for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++) {
+		float frame = 0.0f;
+		float inFrame = 0.0f;
+		frame += controller->process(inFrame);
+		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
+            audioWrite(context, n, ch,  frame);
+        }
+	}
 }
 
 void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager* resourceManager){
@@ -366,7 +399,9 @@ void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager* re
 
 
 	/*
-	Findings: the chunksize strongly influences the bandwidth. up to 200 ms the increase is
+	Findings from old streamingbuffer class, should be comparable now, because the 
+	bandwidth to the SD card is the limit and that did not chnange:
+	the chunksize strongly influences the bandwidth. up to 200 ms the increase is
 	steep, afterwards not so much. for 50 ms we get approx. 10 MB/s for the chunks,
 	with 200ms weg et approximately 20 MB/s. theoretically it should be:
 	the more BW the more chunks can be streamed at the same time
@@ -388,397 +423,60 @@ void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager* re
 	
 	*/
 void ModeManager::renderStreamingBandwidthTest(BelaContext *context, ResourceManager* resourceManager){
-/*TODO Make compatible with new streamingbuffer class
-
-
 	assert(context != nullptr);
 	assert(resourceManager != nullptr);
-	struct ConfigKey {
-		int chunkMs = 0;
-		int sampleCount = 0;
-		bool operator<(const ConfigKey& other) const {
-			if(chunkMs == other.chunkMs) {
-				return sampleCount < other.sampleCount;
-			}
-			return chunkMs < other.chunkMs;
-		}
-	};
-
-	struct RunningStats {
-		int count = 0;
-		double sum = 0.0;
-		double sumSquares = 0.0;
-		float mean = 0.0f;
-		float stddev = 0.0f;
-
-		void add(float value){
-			count++;
-			sum += value;
-			sumSquares += static_cast<double>(value) * static_cast<double>(value);
-		}
-
-		void finalize(){
-			if(count <= 0){
-				mean = 0.0f;
-				stddev = 0.0f;
-				return;
-			}
-			mean = static_cast<float>(sum / static_cast<double>(count));
-			if(count <= 1){
-				stddev = 0.0f;
-				return;
-			}
-			double variance = (sumSquares / static_cast<double>(count)) - (static_cast<double>(mean) * static_cast<double>(mean));
-			if(variance < 0.0){
-				variance = 0.0;
-			}
-			stddev = sqrtf(static_cast<float>(variance));
-		}
-	};
-
-	struct ConfigResult {
-		RunningStats start;
-		RunningStats chunk;
-	};
-
-	enum class Phase {
-		TriggerStart,
-		AwaitStart,
-		WaitBeforeChunk,
-		TriggerChunks,
-		AwaitChunks,
-		WaitBeforeNextConfig,
-		Complete
-	};
-
-	struct ExperimentState {
-		bool initialized = false;
-		bool complete = false;
-		bool printed = false;
-		Phase phase = Phase::TriggerStart;
-		double phaseStartTime = 0.0;
-		double cooldownEndTime = 0.0;
-		bool waitingForStartFlagRise = false;
-		bool waitingForChunkFlagRise = false;
-		int runsTotal = 0;
-		int currentRun = 0;
-		size_t chunkIndex = 0;
-		size_t sampleIndex = 0;
-		float timeDelta = 0.0f;
-		size_t availableStartCount = 0;
-		size_t chunkSamples = 0;
-		size_t chunkBytes = 0;
-		size_t totalChunkSamples = 0;
-		uint32_t targetStartJob = 0;
-		uint32_t targetChunkJob = 0;
-		ConfigKey currentKey;
-		std::vector<int> chunkSizesMs;
-		std::vector<int> sampleCounts;
-		const std::vector<std::pair<int,int>>* availableSampleIds = nullptr;
-		std::map<ConfigKey, ConfigResult> results;
-
-		void resetTransient(){
-			waitingForStartFlagRise = false;
-			waitingForChunkFlagRise = false;
-			totalChunkSamples = 0;
-			phaseStartTime = 0.0;
-			availableStartCount = 0;
-			targetStartJob = 0;
-			targetChunkJob = 0;
-		}
-		void resetState(){
-			initialized = false;
-			complete = false;
-			printed = false;
-			phase = Phase::TriggerStart;
-			phaseStartTime = 0.0;
-			cooldownEndTime = 0.0;
-			waitingForStartFlagRise = false;
-			waitingForChunkFlagRise = false;
-			runsTotal = 0;
-			currentRun = 0;
-			chunkIndex = 0;
-			sampleIndex = 0;
-			timeDelta = 0.0f;
-			availableStartCount = 0;
-			chunkSamples = 0;
-			chunkBytes = 0;
-			totalChunkSamples = 0;
-			targetStartJob = 0;
-			targetChunkJob = 0;
-			currentKey = {};
-			chunkSizesMs.clear();
-			sampleCounts.clear();
-			results.clear();
-			availableSampleIds = nullptr;
-		}
-	};
-
-	static ExperimentState state;
 	static int blocksElapsed = 0;
 	blocksElapsed++;
 
-	const std::string folderPath = "/mnt/sdcard/Samples/converted_new/";
-
 	SamplePack* samplePack = resourceManager->getKeyInstrumentSamplePack();
-	if(!samplePack){
-		rt_printf("renderStreamingBandwidthTest: SamplePack not available\n");
-		currentTestDone = true;
-		return;
-	}
-	StreamingBuffer* sb = &(samplePack->streamingBuffer);
-	sb->processBlockwise();
-
-	// Utility lambdas for configuring sweep parameters and picking samples.
-	auto buildRange = [](int minVal, int maxVal, int step){
-		std::vector<int> range;
-		if(minVal > maxVal) std::swap(minVal, maxVal);
-		if(step <= 0 || minVal == maxVal){
-			range.push_back(minVal);
-			if(range.back() != maxVal){
-				range.push_back(maxVal);
-			}
-			return range;
+	Voices* voices = resourceManager->getVoices();
+	static std::unordered_map<SampleIdentifier, size_t>& availableSamples = samplePack->getAvailableSamples();
+	static size_t totalsizeinbytes;
+	if(blocksElapsed == 1){
+		for(auto& pairthing: availableSamples){
+			totalsizeinbytes += pairthing.second * sizeof(float);
 		}
-		for(int value = minVal; value <= maxVal; value += step){
-			range.push_back(value);
-		}
-		if(range.empty() || range.back() != maxVal){
-			range.push_back(maxVal);
-		}
-		return range;
-	};
-
-	auto getSampleSelection = [](const std::vector<std::pair<int,int>>* availableIds, int desiredCount){
-		std::vector<std::pair<int,int>> selection;
-		if(!availableIds || availableIds->empty() || desiredCount <= 0){
-			return selection;
-		}
-		const auto& ids = *availableIds;
-		const size_t availableSize = ids.size();
-		selection.reserve(desiredCount);
-		for(int i = 0; i < desiredCount; ++i){
-			selection.push_back(ids[static_cast<size_t>(i) % availableSize]);
-		}
-		return selection;
-	};
-
-	// State machine that advances one scheduling step per audio block.
-	auto runExperiment = [&, this](int minChunkMs, int maxChunkMs, int chunkStepMs,
-		int minSamples, int maxSamples, int sampleStep, float timeDeltaSeconds,
-		int runs) -> std::map<ConfigKey, ConfigResult>& {
-
-		double now = this->blocksToSeconds(blocksElapsed);
-
-		if(!state.initialized){
-			state.resetState();
-			state.initialized = true;
-			state.timeDelta = std::max(0.0f, timeDeltaSeconds);
-			state.runsTotal = std::max(1, runs);
-			state.chunkSizesMs = buildRange(std::max(1, minChunkMs), std::max(1, maxChunkMs), chunkStepMs);
-			state.sampleCounts = buildRange(std::max(1, minSamples), std::max(1, maxSamples), sampleStep);
-			if(state.chunkSizesMs.empty()){
-				state.chunkSizesMs.push_back(std::max(1, minChunkMs));
-			}
-			if(state.sampleCounts.empty()){
-				state.sampleCounts.push_back(std::max(1, minSamples));
-			}
-			state.availableSampleIds = &sb->getAvailableSamples();
-			state.availableStartCount = state.availableSampleIds ? state.availableSampleIds->size() : 0;
-			state.phase = Phase::TriggerStart;
-		}
-
-		if(state.complete){
-			state.phase = Phase::Complete;
-			return state.results;
-		}
-
-		switch(state.phase){
-			case Phase::TriggerStart: {
-				if(sb->isStreaming()){
-					break;
-				}
-				state.resetTransient();
-				if(state.chunkIndex >= state.chunkSizesMs.size()){
-					state.chunkIndex = 0;
-				}
-				if(state.sampleIndex >= state.sampleCounts.size()){
-					state.sampleIndex = 0;
-				}
-				state.currentKey.chunkMs = state.chunkSizesMs[state.chunkIndex];
-				state.currentKey.sampleCount = state.sampleCounts[state.sampleIndex];
-				int chunkMs = std::max(1, state.currentKey.chunkMs);
-				state.chunkSamples = static_cast<size_t>(std::max(1.0f,
-						44100.0f * static_cast<float>(chunkMs) / 1000.0f));
-				state.chunkBytes = state.chunkSamples * sizeof(float);
-				state.targetStartJob = sb->getStartJobsIssued() + 1;
-				sb->initForFolder(folderPath, state.chunkSamples);
-				state.waitingForStartFlagRise = true;
-				state.phaseStartTime = now;
-				state.phase = Phase::AwaitStart;
-				break;
-			}
-			case Phase::AwaitStart: {
-				if(state.targetStartJob == 0){
-					state.targetStartJob = sb->getStartJobsIssued() + 1;
-				}
-				if(state.waitingForStartFlagRise){
-					if(sb->getStartJobsIssued() >= state.targetStartJob){
-						state.waitingForStartFlagRise = false;
-						state.phaseStartTime = now;
-					}
-					break;
-				}
-				if(sb->getStartJobsCompleted() < state.targetStartJob){
-					break;
-				}
-				if(state.availableSampleIds){
-					state.availableStartCount = state.availableSampleIds->size();
-				}
-				double elapsed = now - state.phaseStartTime;
-				if(elapsed <= 0.0){
-					elapsed = 1e-6;
-				}
-				float startBandwidth = 0.0f;
-				double totalBytes = static_cast<double>(state.availableStartCount) * static_cast<double>(state.chunkBytes);
-				if(totalBytes > 0.0){
-					startBandwidth = static_cast<float>(totalBytes / (elapsed * 1024.0 * 1024.0));
-				}
-				state.results[state.currentKey].start.add(startBandwidth);
-				state.cooldownEndTime = now + static_cast<double>(state.timeDelta);
-				state.targetStartJob = 0;
-				state.phase = (state.timeDelta > 0.0f) ? Phase::WaitBeforeChunk : Phase::TriggerChunks;
-				break;
-			}
-			case Phase::WaitBeforeChunk: {
-				if(now >= state.cooldownEndTime && !sb->isStreaming()){
-					state.phase = Phase::TriggerChunks;
-				}
-				break;
-			}
-			case Phase::TriggerChunks: {
-				if(sb->isStreaming()){
-					break;
-				}
-				state.resetTransient();
-				std::vector<std::pair<int,int>> selection = getSampleSelection(state.availableSampleIds, state.currentKey.sampleCount);
-				if(selection.empty()){
-					rt_printf("renderStreamingBandwidthTest: no samples available for chunk test\n");
-					state.complete = true;
-					state.phase = Phase::Complete;
-					break;
-				}
-				for(const auto& identifier : selection){
-					size_t requestId = sb->requestSample(identifier);
-					int length = sb->getRequestSampleLength(requestId);
-					if(length > 0){
-						state.totalChunkSamples += static_cast<size_t>(length);
-					}
-				}
-				state.targetChunkJob = sb->getChunkJobsIssued() + 1;
-				state.waitingForChunkFlagRise = true;
-				state.phaseStartTime = now;
-				state.phase = Phase::AwaitChunks;
-				break;
-			}
-			case Phase::AwaitChunks: {
-				if(state.targetChunkJob == 0){
-					state.targetChunkJob = sb->getChunkJobsIssued() + 1;
-				}
-				if(state.waitingForChunkFlagRise){
-					if(sb->getChunkJobsIssued() >= state.targetChunkJob){
-						state.waitingForChunkFlagRise = false;
-						state.phaseStartTime = now;
-					}
-					break;
-				}
-				if(sb->getChunkJobsCompleted() < state.targetChunkJob){
-					break;
-				}
-				double elapsed = now - state.phaseStartTime;
-				if(elapsed <= 0.0){
-					elapsed = 1e-6;
-				}
-				float chunkBandwidth = 0.0f;
-				double totalBytes = static_cast<double>(state.totalChunkSamples) * sizeof(float);
-				if(totalBytes > 0.0){
-					chunkBandwidth = static_cast<float>(totalBytes / (elapsed * 1024.0 * 1024.0));
-				}
-				state.results[state.currentKey].chunk.add(chunkBandwidth);
-				state.targetChunkJob = 0;
-				state.sampleIndex++;
-				if(state.sampleIndex >= state.sampleCounts.size()){
-					state.sampleIndex = 0;
-					state.chunkIndex++;
-				}
-				if(state.chunkIndex >= state.chunkSizesMs.size()){
-					state.chunkIndex = 0;
-					state.currentRun++;
-				}
-				if(state.currentRun >= state.runsTotal){
-					state.complete = true;
-					state.phase = Phase::Complete;
-				} else {
-					state.cooldownEndTime = now + static_cast<double>(state.timeDelta);
-					state.phase = (state.timeDelta > 0.0f) ? Phase::WaitBeforeNextConfig : Phase::TriggerStart;
-				}
-				break;
-			}
-			case Phase::WaitBeforeNextConfig: {
-				if(now >= state.cooldownEndTime && !sb->isStreaming()){
-					state.phase = Phase::TriggerStart;
-				}
-				break;
-			}
-			case Phase::Complete:
-			default:
-				state.complete = true;
-				break;
-		}
-
-		return state.results;
-	};
-
-	const int minChunkMs = 50;
-	const int maxChunkMs = 300;
-	const int chunkStepMs = 50;
-	const int minSamples = 5;
-	const int maxSamples = 25;
-	const int sampleStep = 5;
-	const float timeDeltaSeconds = 0.0f;
-	const int runs = 3;
-
-	auto& results = runExperiment(minChunkMs, maxChunkMs, chunkStepMs,
-		minSamples, maxSamples, sampleStep, timeDeltaSeconds, runs);
-
-	if(state.complete && !state.printed){
-		for(auto& entry : results){
-			entry.second.start.finalize();
-			entry.second.chunk.finalize();
-			rt_printf("Streaming BW | chunk %d ms, samples %d | starts: %.3f MB/s (std %.3f) | chunks: %.3f MB/s (std %.3f)\n",
-				entry.first.chunkMs,
-				entry.first.sampleCount,
-				entry.second.start.mean,
-				entry.second.start.stddev,
-				entry.second.chunk.mean,
-				entry.second.chunk.stddev);
-		}
-		state.printed = true;
-		currentTestDone = true;
-		blocksElapsed = 0;
-		state.initialized = false;
+		DEBUG_RT_PRINTF("total isze in bytes = %zu\n", totalsizeinbytes);
 	}
 
-	for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++){
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++){
-			audioWrite(context, n, ch, 0.0f);
+	if(blocksElapsed == 1000){
+		int i = 0;
+		for(auto& sidlengthpair: availableSamples){
+			i++;
+			samplePack->streamFullSample(sidlengthpair.first);
+		}
+	}
+	static bool streamerStarted = false;
+	static int startBlock = 0;
+	static int endBlock = 0;
+	static bool done = false;
+	if(blocksElapsed > 1001 && !done){
+		if(!samplePack->streamerIsInFlight() && !streamerStarted){
+			DEBUG_RT_PRINTF("waiting for streamer to start\n");
+		}
+		if(samplePack->streamerIsInFlight() && !streamerStarted){
+			streamerStarted = true;
+			startBlock = blocksElapsed;
+			DEBUG_RT_PRINTF("start stream at block %d", startBlock);
+		}
+		if(!samplePack->streamerIsInFlight() && streamerStarted){
+			endBlock = blocksElapsed;
+			DEBUG_RT_PRINTF("done streaming at block %d\n", endBlock);
+			int totalblocks = endBlock - startBlock;
+			DEBUG_RT_PRINTF("so we took %d blocks\n", totalblocks);
+			float totaltime = totalblocks * (float)resourceManager->audioFramesPerBlock / (float)resourceManager->audioFramesPerSecond;
+			DEBUG_RT_PRINTF("which is a time of %f seconds\n", totalblocks);
+			DEBUG_RT_PRINTF("which gives a bandwidth of %f MB/s\n", 1e-6 * totalsizeinbytes / totaltime);
+			done = true;
 		}
 	}
 
-
-
-
-
-
-	*/
+	samplePack->processBlockwise();
+	for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++) {
+		float frame = 0.0f;
+		//frame += voices->process();
+		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
+            audioWrite(context, n, ch,  frame);
+        }
+	}
 }

@@ -20,9 +20,7 @@ public:
 	virtual std::string getLine(int, int) = 0;
 	
 	virtual void setProgress(int, float) = 0;
-	
-	virtual TaskWrapper& getDisplayTask() = 0;
-	
+		
 	virtual void renderDisplay() = 0;
 	
 };

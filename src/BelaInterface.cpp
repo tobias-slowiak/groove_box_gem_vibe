@@ -60,7 +60,7 @@ BelaInterface::BelaInterface(ResourceManager* resourceManager): resourceManager(
 	                dm->numberOfPotentiometers);
 	for(auto pin: dm->buttonPins){
 		buttons.push_back(Button(context, pin));
-		DEBUG_RT_PRINTF("  Button pin %d registered\n", pin);
+		//DEBUG_RT_PRINTF("  Button pin %d registered\n", pin);
 	}
 	for(int i = 0; i < dm->numberOfRotEncs; i++){
 		assert(dm->rotEncPins.size() > static_cast<size_t>(i));

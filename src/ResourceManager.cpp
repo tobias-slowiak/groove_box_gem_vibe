@@ -80,6 +80,7 @@ void ResourceManager::setup(BelaContext* context){
 	keyMidiConnected = (keyMidi->readFrom(deviceMap->keyMidiName.c_str()) == 1);
 	if(keyMidiConnected){
 		printf("Key Midi Device available.\n");
+		keyMidi->writeTo(deviceMap->keyMidiName.c_str());
 		keyMidi->enableParser(true);
 	} else {
 		printf("Key Midi Device not available\n");
@@ -89,7 +90,7 @@ void ResourceManager::setup(BelaContext* context){
 
 	controlMidi = new MidiReal();
 	controlMidiConnected = (controlMidi->readFrom(deviceMap->controlMidiName.c_str()) == 1);
-	if(keyMidiConnected){
+	if(controlMidiConnected){
 		printf("Control Midi Device available.\n");
 		controlMidi->writeTo(deviceMap->controlMidiName.c_str());
     	controlMidi->enableParser(true);
@@ -107,17 +108,19 @@ void ResourceManager::setup(BelaContext* context){
 	blocksPerSecond = audioFramesPerSecond / audioFramesPerBlock;
 	
 	//Classes
-	controller = new Controller(this);
 	voices = new Voices(this);
 	printf("Constructed Vocies\n");
+	keyInstrumentSamplePack = new SamplePack(this, voices, "keyInstrument", "/mnt/sdcard/Samples/Piano", 44100 * 6 * 35); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	printf("Constructed keyInstrumentSamplePack\n");
+	keyInstrumentSamplePack->printBufferInfo();
 	samplers = new Samplers(this);
 	printf("Constructed Samplers\n");
 	loopers = new Loopers(this);
 	printf("Constructed Loopers\n");
-	keyInstrumentSamplePack = new SamplePack(this, voices, "keyInstrument", "/mnt/sdcard/Samples/converted_min", 44100 * 6 * 30); // approx 10 MB of space
-	printf("Constructed keyInstrumentSamplePack\n");
-	keyInstrumentSamplePack->printBufferInfo();
+
+	controller = new Controller(this);
 	
+
 	this->makeTestSample();
 	printf("Made TestSample\n");
 	printf("------------------------------------\n");
@@ -165,12 +168,8 @@ DeviceMap* ResourceManager::getDeviceMap(){
 }
 
 IDisplayContext* ResourceManager::getDisplayContext(){
-	if (displayContext)
-		return displayContext;
-	else {
-		rt_printf("ERROR: trying to getDisplayContext(), but that is nullptr\n");
-		throw std::runtime_error("getDisplayContext() failed: is nullptr");
-	}
+	assert(displayContext != nullptr);
+	return displayContext;
 }
 
 Samplers* ResourceManager::getSamplers() {
@@ -210,12 +209,8 @@ Controller* ResourceManager::getController(){
 }
 
 BelaInterface* ResourceManager::getBelaInterface(){
-	if (interface)
-		return interface;
-	else {
-		rt_printf("ERROR: trying getBelaInterface(), but that is nullptr\n");
-		throw std::runtime_error("getBelaInterface() failed: is nullptr");
-	}
+	assert(interface != nullptr);
+	return interface;
 }
 
 IMidi* ResourceManager::getKeyMidi(){

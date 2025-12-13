@@ -6,6 +6,42 @@
 #include "include/ModeManager.h"
 
 
+//TODO: make stack allocation instead of heap pointers wherever possible.
+//   where it is not possible (for example the real/fake dual classes) do in place initiation of unique ptrs.
+/*
+like this:
+class ResourceManager {
+public:
+    ResourceManager(bool interfaceConnected,
+                    const DeviceMap& dev)
+    : interface(interfaceConnected
+        ? std::make_unique<BelaInterface>(*this)
+        : std::unique_ptr<BelaInterface>{}), // empty when not connected
+      keyMidi([&]{
+        if(auto m = std::make_unique<MidiReal>();
+           m->readFrom(dev.keyMidiName.c_str()) == 1) {
+            m->writeTo(dev.keyMidiName.c_str());
+            m->enableParser(true);
+            return m;
+        }
+        return std::make_unique<MidiFake>();
+      }()),
+      display(interfaceConnected
+        ? std::make_unique<DisplayContextReal>(*this, initU8G2s())
+        : std::make_unique<DisplayContextFake>())
+    {}
+
+private:
+    std::unique_ptr<BelaInterface> interface;
+    std::unique_ptr<IMidi> keyMidi;
+    std::unique_ptr<IDisplayContext> display;
+};
+*/
+
+//TODO: change all .at() for assert+operator[]
+
+//TODO: wherever possible put checkAndWorkMessages out of processBlockwise and only run when state changed.
+
 //TODO: put mount of SD card in the run on boot.
 
 //TODO: dieses deamon und restart in startup (warum muss das immer gemacht werden?)

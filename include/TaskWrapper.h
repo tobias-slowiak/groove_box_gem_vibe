@@ -6,119 +6,100 @@
 #include <vector>
 #include <cassert>
 
-static constexpr size_t DEFAULT_TASK_MESSAGE_QUEUE_CAPACITY = 512;
+#include "../include/DisplayMessage.h"
+
+/*each daughter class must implement
+  taskWorkMessage(std::string& taskName, MsgType msg)
+    which tells the taskwrapper what to do with a message
+
+other than that it should have fields with name
+  X_...
+if they are a second instance of fields of the given class
+which can only be used by the task and must be synchronized.
+X is the first letter of the stream name.
+
+*/
+
+//taskmessage for tasks that only do one thing.
+struct DefaultTaskMessage{};
 
 enum class TaskMessageTarget: int{
     AudioThread,
     TaskThread
 };
 
-struct TaskMessage {
-    int Id1;
-    int Id2;
-    int Id3;
-    int Id4;
-    int Id5;
-};
+static constexpr size_t DEFAULT_TASK_MESSAGE_QUEUE_CAPACITY = 1024;
 
+template<typename MsgType>
 class TaskMessageQueue {
 public:
-
-    TaskMessageQueue() {
-        assert(0 > 1  && "TaskMessageQueue default ctor should never trigger.");}
+    TaskMessageQueue() = delete;
     
-    TaskMessageQueue(size_t capacity): capacity(capacity){
-        assert(capacity > 2 && "TaskMessageQueue capacity must be > 2");
-        messages.resize(capacity);
-    }
+    TaskMessageQueue(size_t capacity, std::string name);
     
-    bool push(TaskMessage value);
+    bool push(MsgType msg);
 
-    bool pop(TaskMessage& out);
+    bool pop(MsgType& msg);
 
 private:
     size_t capacity;
-    std::vector<TaskMessage> messages;
+    std::string name;
+    std::vector<MsgType> messages;
     std::atomic<size_t> tail{0};
     std::atomic<size_t> head{0}; // producer-only
 };
 
-template<typename T>
+template<typename ParentType, typename MsgType>
 class TaskWrapper{
 public:
-    TaskWrapper(T* object, int priority, std::string name)
-        :object(object),
-        priority(priority),
-        name(name)
-    {
-        auxiliaryTask = Bela_createAuxiliaryTask(genericTaskFunction, priority, name.c_str(), this);
-    }
+    TaskWrapper(ParentType* object, int priority, std::string name);
 
-    void setScheduleFlag(){needsScheduling = true;}
+    void setScheduleFlag();
 
-    bool inFlight(){
-        bool expected = false;
-        return taskInFlight.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
-    }
+    bool isInFlight();
 
-    void processBlockwise(){
-        if(needsScheduling && !inFlight()){
-            int scheduleResponse = Bela_scheduleAuxiliaryTask(auxiliaryTask);
-            if(scheduleResponse != 0){
-                taskInFlight.store(false, std::memory_order_release);
-                if(scheduleResponse != EBUSY){
-                    DEBUG_RT_PRINTF("TaskWrapper::processBlockwise(): Bela_scheduleAuxiliaryTask sent error code: %d on task %s\n",
-                        scheduleResponse, name.c_str());
-                }
-            }
-        }
-    }
+    bool tryClaimInFlight();
 
-    void taskJob(std::string& taskName){
-        object->taskJob(taskName);
-    }
+    void taskCheckAndWorkMessages();
 
-    void finished(){taskInFlight.store(false, std::memory_order_release);}
+    bool tryReleaseInFlight();
 
-    const std::string& getName(){
-        return name;
-    }
+    std::string& getName();
 
-    bool pushMessage(TaskMessageTarget target, TaskMessage taskMsg){
-        if(target == TaskMessageTarget::AudioThread){
-            return taskToAudio.push(taskMsg);
-        }
-        if(target == TaskMessageTarget::TaskThread){
-            return audioToTask.push(taskMsg);
-        }
-        throw std::runtime_error("TaskWrapper::pushMessage called with invalid target");
-        return false;
-    }
+    bool pushMessage(TaskMessageTarget target, MsgType msg);
 
-    bool popMessage(TaskMessageTarget target, TaskMessage& taskMsg){
-        if(target == TaskMessageTarget::AudioThread){
-            return taskToAudio.pop(taskMsg);
-        }
-        if(target == TaskMessageTarget::TaskThread){
-            return audioToTask.pop(taskMsg);
-        }
-        throw std::runtime_error("TaskWrapper::popMessage called with invalid target");
-        return false;
-    }
+    bool popMessage(TaskMessageTarget target, MsgType& msg);
 
 private:
-    T* object;
+    ParentType* object;
     AuxiliaryTask auxiliaryTask;
-    TaskMessageQueue audioToTask{DEFAULT_TASK_MESSAGE_QUEUE_CAPACITY};
-    TaskMessageQueue taskToAudio{DEFAULT_TASK_MESSAGE_QUEUE_CAPACITY};
     std::atomic<bool> taskInFlight{false};
     int priority;
     std::string name;
     bool needsScheduling = false;
 
-    static void genericTaskFunction(void* arg) {
-        TaskWrapper* taskWrapper = static_cast<TaskWrapper<T>*>(arg);
-        taskWrapper->taskJob(taskWrapper->getName());
-        taskWrapper->finished();
-    }
+    static void taskWorkMessages(void* arg);
+
+    TaskMessageQueue<MsgType> audioToTask{DEFAULT_TASK_MESSAGE_QUEUE_CAPACITY, name+"_audioToTask"};
+    TaskMessageQueue<MsgType> taskToAudio{DEFAULT_TASK_MESSAGE_QUEUE_CAPACITY, name+"_taskToAudio"};
 };
+
+// Forward declarations for explicit instantiations.
+class DisplayContextReal;
+class AudioStreamer;
+class StreamingBuffer;
+struct StreamingMessage;
+class SamplePack;
+
+//so the way i understand the follwing is that if i do not do this,
+//the task wrapper class for a certain template type is compiled by the 
+//corresponding class so when i make a task wrapper in the streamingbuffer, then
+//it compiles it's own taskwrapper, and i had problems with this because when i
+//change taskwrapper.cpp it is recompiled, but the taskwrapper version of
+//streamingbuffer is not recompiled and so the changes are not seen in the program
+//and while i am still developing taskwrapper that is bad, i could change it later
+//when it is fully fixed.
+extern template class TaskWrapper<DisplayContextReal, DisplayMessage>;
+extern template class TaskWrapper<AudioStreamer, StreamingMessage>;
+extern template class TaskWrapper<StreamingBuffer, StreamingMessage>;
+extern template class TaskWrapper<SamplePack, DefaultTaskMessage>;

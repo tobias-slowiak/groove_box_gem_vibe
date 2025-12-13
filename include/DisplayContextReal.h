@@ -8,8 +8,8 @@
 
 #include "IDisplayContext.h"
 class ResourceManager;
-class TaskWrapper;
-
+#include "../include/TaskWrapper.h"
+#include "../include/DisplayMessage.h"
 ///////////////////////////////////////////NONMEMBER-FUNCTIONS
 
 void displayThreadFunction(void* arg);
@@ -31,15 +31,17 @@ public:
 	
 	void setLines(std::vector<std::vector<std::string>>) override;
 
+    void sendTaskMessage();
+
 	std::string getLine(int displayNumber, int lineNumber) override;
 	
 	void setProgress(int displayNumber, float percentage) override;
     
     ResourceManager* getResourceManager() { return resourceManager; }
-	
-	TaskWrapper& getTask() override;
-	
+		
 	void renderDisplay() override;
+
+    void taskWorkMessage(std::string& taskName, DisplayMessage msg);
 	
 private:
 
@@ -55,9 +57,13 @@ private:
 	std::vector<std::vector<std::string>> lines;
 	std::vector<U8G2*> u8g2s;
     
-    TaskWrapper<DisplayContextReal> displayTask;
+    TaskWrapper<DisplayContextReal, DisplayMessage> renderTask;
     
     int progressDisplay = -1; //determines which display shows the progress bar
     float progress = 0.0f;
 
+    //render Task only
+    std::vector<std::vector<std::string>> r_lines;
+    int r_progressDisplay = -1; 
+    float r_progress = 0.0f;
 };

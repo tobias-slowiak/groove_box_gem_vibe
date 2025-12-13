@@ -49,6 +49,7 @@ struct ZipperFreeGain {
 };
 */
 
+
 enum class UIState {
 	General,
     Instrument,
@@ -62,6 +63,8 @@ public:
 	Controller(ResourceManager* resourceManager);
 	
 	void processBlockwise();
+
+	float process(float inFrame);
 	
 	void stateSwitch(int indexShift);
 	
@@ -92,6 +95,8 @@ private:
 	IDisplayContext* displayContext;
 	IMidi* keyMidi;
 	IMidi* controlMidi;
+	SamplePack* keyInstrumentSamplePack;
+	SamplePack* drumInstrumentSamplePack;
 
 	UIState state = UIState::General;
 	int bpm = 120;

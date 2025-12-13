@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cassert>
-//test
+//compile
 #include "../include/BasicUtilities.h"
 #include "../include/Potentiometer.h"
 #include "../include/DebugLog.h"
@@ -24,11 +24,13 @@ Potentiometer::Potentiometer(BelaContext* context, bool reverse, int pinNumber, 
 
 		warmupBlocks = std::max(0, static_cast<int>(kWarmupSeconds * blocksPerSecond));
 		warmupActive = warmupBlocks > 0;
+		/*
 		DEBUG_RT_PRINTF("Potentiometer %d init: reverse=%d tau_ms=%.2f warmupBlocks=%d\n",
 		                pinNumber,
 		                reverse ? 1 : 0,
 		                tau_ms,
 		                warmupBlocks);
+						*/
 	} else {
 		a = 0.0f;
 		warmupBlocks = 0;
@@ -73,7 +75,7 @@ void Potentiometer::processBlockwise() {
 		if(warmupBlocks > 0){
 			--warmupBlocks;
 			if(warmupBlocks == 0){
-				DEBUG_RT_PRINTF("Potentiometer %d warmup finished\n", pinNumber);
+				//DEBUG_RT_PRINTF("Potentiometer %d warmup finished\n", pinNumber);
 			}
 			return;
 		}
@@ -81,10 +83,12 @@ void Potentiometer::processBlockwise() {
 		lastStep = newStep;
 		reportedValue = quantizedValue;
 		pendingChange = true;
+		/*
 		DEBUG_RT_PRINTF("Potentiometer %d primed at step %d (%.3f)\n",
 		                pinNumber,
 		                newStep,
 		                reportedValue);
+						*/
 		return;
 	}
 
