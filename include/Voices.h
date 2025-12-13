@@ -5,10 +5,9 @@
 #include <cassert>
 
 class ResourceManager;
-class StreamingBuffer;
-class StreamingBufferIterator;
 class BasicUtilities;
 #include "ADSR.h"
+#include "StreamingBuffer.h"
 
 class Voice {
 public:
@@ -16,8 +15,6 @@ public:
 		ResourceManager* resourceManager,
 		float attack = 0.0f, float decay = 0.0f, float sustain = 1.0f, float release = 0.0f,
 		float gain = 1.0f, float playbackRate = 1.0f, bool repeat = false);
-
-    Voice& operator=(const Voice&) = default;
 	
     void noteOff(){adsr.noteOff();}
         
@@ -30,7 +27,7 @@ public:
 	bool isOn(){return adsr.isOn();}
 	
 private:
-	StreamingBufferIterator* iterator;
+	StreamingBufferIterator& iterator;
 	int note;
 	int velocity;
 	float gain = 1.0f;
