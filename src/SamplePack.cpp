@@ -97,7 +97,7 @@ std::unordered_map<SampleIdentifier, size_t>& SamplePack::getAvailableSamples(){
         }
     }
     if(availableSamples.size() != wavFiles.size()) throw std::runtime_error("SamplePack: there are files that are not in the right naming convention note_velocity.wav!!");
-    DEBUG_PRINTF("SamplePack::getAvailableSamples: usable samples=%zu keys=%zu\n with max Velocity: $d",
+    DEBUG_PRINTF("SamplePack::getAvailableSamples: usable samples=%zu keys=%zu\n with max Velocity: %d",
         availableSamples.size(), availableKeys.size(), maxAvailableVelocity);
     return availableSamples;
 }
@@ -173,12 +173,11 @@ void SamplePack::triggerVoice(int note, int midiVelocity){
     assert(note >= 0 && note < 128 && "SamplePack::triggerVoice key out of MIDI range");
     assert(midiVelocity >= 0 && midiVelocity < 128 && "SamplePack::triggerVoice velocity out of MIDI range");
     assert(midiVelocity > 0 && "SamplePack::triggerVoice triggered with vel==0");
-    float gain = 1.0f; // TODO: adjust gain by velocity
     SampleIdentifier sampleIdentifier{note, midiToSampleVelocity(midiVelocity)};
     SampleIdentifier closestSample = findClosestSample(sampleIdentifier);
     assert(availableSamples.find(closestSample) != availableSamples.end() && "SamplePack::triggerVoice closestSample not in availableSamples");
-    StreamingBufferIterator& iterator = streamingBuffer.begin(closestSample, SBIType::Read);
     float playbackRate = powf(2.0f, (float)(sampleIdentifier.first - closestSample.first) / 12.0f);
+    StreamingBufferIterator& iterator = streamingBuffer.begin(closestSample, SBIType::Read, playbackRate);
     DEBUG_RT_PRINTF("playbackrate %f on original sample %d, %d with chosen sample %d %d\n", playbackRate, sampleIdentifier.first, sampleIdentifier.second, closestSample.first, closestSample.second);
     voices->triggerVoice(iterator, note, playbackRate);
 }

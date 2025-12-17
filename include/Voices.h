@@ -8,7 +8,6 @@ class ResourceManager;
 class BasicUtilities;
 #include "ADSR.h"
 #include "StreamingBuffer.h"
-#include "StreamingBufferIterator.h"
 
 //TODO: iteratorptr is unelegant and also i think i only delete voices via stealing, would be better if they
 //got removed when done

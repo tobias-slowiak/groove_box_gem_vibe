@@ -18,47 +18,38 @@ public:
     //Audio thread only 
     AudioStreamer(StreamingBuffer& streamingBuffer);
 
-    void sendStreamChunkMessage(SampleIdentifier sampleIdentifier, int chunkIndex);
+    void sendStreamChunkMessage(SampleIdentifier sampleIdentifier, int chunkIndex, std::vector<int>& chunkIndicesInBuffer);
 
-    void flushToDisk(SampleIdentifier sampleIdentifier);
+    void sendFlushChunksMessages(SampleIdentifier sampleIdentifier);
+
+    //Stream Thread only
+    void workStreamMessage(StreamingMessage msg);
+
+    //Flush Thread only
+    void workFlushMessage(StreamingMessage msg);
+
+    void taskWorkMessage(std::string& taskName, StreamingMessage msg);
 
     void audioCheckAndWorkMessages();
     
     void processBlockwise();
 
-    bool streamerIsInFlight(){return streamSamplesTask.isInFlight();}
-
-    //Stream Thread only
-
-    void stream(StreamingMessage msg);
-
-    //Flush Thread only
-    void flush(StreamingMessage msg);
-
-    void taskWorkMessage(std::string& taskName, StreamingMessage msg);
+    bool streamerIsInFlight(){return streamTask.isInFlight();}
 
 private:
-    enum class ScheduleStatus {
-        Scheduled,
-        Busy,
-        Error
-    };
     friend class StreamingBuffer;
     friend class StreamingBufferIterator;
-    friend class SamplePack;
     StreamingBuffer& parent;
     
-
     //Auxiliary Tasks
-    int streamSamplePrio = 50;
-    int flushToDiskPrio = 20;
-    std::string streamSamplesTaskName;
-    std::string flushToDiskTaskName;
-    TaskWrapper<AudioStreamer, StreamingMessage> streamSamplesTask;
-    TaskWrapper<AudioStreamer, StreamingMessage> flushToDiskTask;
+    int streamTaskPrio = 70;
+    int flushTaskPrio = 20;
+    std::string streamTaskName;
+    std::string flushTaskName;
+    TaskWrapper<AudioStreamer, StreamingMessage> streamTask;
+    TaskWrapper<AudioStreamer, StreamingMessage> flushTask;
 
     //Stream Thread Only
-    std::unordered_map<SampleIdentifier, std::vector<int>> s_chunkIndicesInBuffer; //synchronize with parent
     std::vector<float> s_streamBuffer;
 
     std::unordered_set<SampleIdentifier> pendingFlushes;

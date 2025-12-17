@@ -137,6 +137,18 @@ Sync-BelaClock
 Invoke-Ssh "mkdir -p '$RemoteFolder' '$RemoteFolder/include' '$RemoteFolder/src'"
 
 if ($Rebuild) {
+    $confirm1 = (Read-Host "are you sure you want to rebuild").Trim().ToLowerInvariant()
+    if ($confirm1 -ne "y") {
+        Write-Host "Rebuild cancelled."
+        return
+    }
+
+    $confirm2 = (Read-Host "are you really sure").Trim().ToLowerInvariant()
+    if ($confirm2 -ne "y") {
+        Write-Host "Rebuild cancelled."
+        return
+    }
+
     Write-Host "[bela] Removing remote build directory..."
     #Invoke-Ssh "rm -r '$RemoteFolder/build'"
     Invoke-Ssh "rm -rf Bela/projects/instrumentFromPC/build/src"

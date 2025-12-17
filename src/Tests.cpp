@@ -103,29 +103,34 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager* resour
 	//delayed start of playback bc otherwise it will stream too slow. investigate!
 
 	if(blocksElapsed == 1){
-		sp->triggerVoice(33,10);
-		sp->triggerVoice(33,20);
-		sp->triggerVoice(36,10);
-		sp->triggerVoice(36,50);
-		sp->triggerVoice(39,10);
-		sp->triggerVoice(39,60);
+		sp->triggerVoice(96,2);
+		sp->triggerVoice(96,3);
+		sp->triggerVoice(96,4);
+		sp->triggerVoice(99,5);
+		sp->triggerVoice(99,6);
 	}
 
-	if(blocksElapsed == 10000){
+	if(blocksElapsed == 15000){
 		sp->initForFolder("/mnt/sdcard/Samples/Standard_Bass");
 	}
 	static int sampleNumber = 0;
 	static int blockOffset = 0;
+	if(blocksElapsed == 20000){
+		sp->triggerVoice(93,1);
+	}
 	if(blocksElapsed == 30000 + blockOffset){
 		sampleNumber += 1;
-		if(sampleNumber == 10){
-			currentTestDone = true;
-			blocksElapsed = 0;
-		}
 		blockOffset += 500;
 		note += 3;
 		DEBUG_RT_PRINTF("\n\n\n sample %d \n\n\n", sampleNumber);
 		sp->triggerVoice(note,10);
+		if(sampleNumber == 10){
+			currentTestDone = true;
+			blocksElapsed = 0;
+			for(int i = 33; i <= note; i++){
+				sp->triggerOff(i);
+			}
+		}
 	}
 
 	sp->processBlockwise();

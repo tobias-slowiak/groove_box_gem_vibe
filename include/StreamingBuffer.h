@@ -1,5 +1,4 @@
 #pragma once
-//compile
 
 #include <limits>
 #include <libraries/sndfile/sndfile.h>
@@ -24,6 +23,14 @@
 #include "../include/TaskWrapper.h"
 #include "../include/AudioStreamer.h"
 
+static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
+static constexpr int CHUNK_INVALID = std::numeric_limits<int>::max() - 1;
+static constexpr int ITERATOR_INVALID = std::numeric_limits<int>::max() - 2;
+static constexpr int CHUNKSTATE_INVALID = std::numeric_limits<int>::max() - 3;
+static constexpr int DEFAULT_STREAMING_CHUNK_SIZE = 8820;
+static constexpr int ARBITRARY_VALUE = std::numeric_limits<int>::max() - 4;
+static constexpr int DEFAULT_STREAMING_ADVANCE_IN_CHUNKS = 2;
+
 class StreamingBuffer;
 class StreamingBufferIterator;
 
@@ -45,43 +52,45 @@ class ElementProxy {
 
 //TODO: make them stop if mutate task in flight?
 class StreamingBufferIterator {
-    public:
-        ElementProxy operator*(){
-            assert(parent != nullptr && "StreamingBufferIterator::operator* parent null");
-            return ElementProxy(*this);
-        }
+public:
+    ElementProxy operator*(){
+        assert(parent != nullptr && "StreamingBufferIterator::operator* parent null");
+        return ElementProxy(*this);
+    }
 
-        StreamingBufferIterator(StreamingBuffer* parent);
+    StreamingBufferIterator(StreamingBuffer* parent);
 
-        StreamingBufferIterator(SampleIdentifier sampleIdentifier, size_t index, StreamingBuffer* parent, std::vector<int>* chunkIndicesInBuffer, SBIType type);
+    StreamingBufferIterator& operator++();      // pre-increment
 
-        StreamingBufferIterator& operator++();      // pre-increment
+    StreamingBufferIterator operator++(int);    // post-increment
 
-        StreamingBufferIterator operator++(int);    // post-increment
+    void set(SampleIdentifier sampleIdentifier,
+            std::vector<int>* chunkIndicesInBuffer,
+            SBIType type,
+            int streamingAdvanceInBlock = DEFAULT_STREAMING_ADVANCE_IN_CHUNKS);
 
-        void set(SampleIdentifier sampleIdentifier, size_t index, StreamingBuffer* parent, std::vector<int>* chunkIndicesInBuffer, SBIType type);
+    void initialize();
 
-        void initialize();
+    void release();
 
-        void release();
+    SampleIdentifier sampleIdentifier;
 
-        SampleIdentifier sampleIdentifier;
+private:
+    friend class StreamingBuffer;
+    friend class AudioStreamer;
+    friend class ElementProxy;
 
-    private:
-        friend class StreamingBuffer;
-        friend class AudioStreamer;
-        friend class ElementProxy;
-
-        size_t index;
-        StreamingBuffer* parent;
-        std::vector<int>* chunkIndicesInBuffer;
-        SBIType type = SBIType::None;
-        size_t sampleLength;
-        int chunkIndex;
-        size_t indexInChunk;
-        int chunkIndexInBuffer;
-        float* chunkStartPtr;
-        float* data;
+    size_t index;
+    StreamingBuffer* parent;
+    std::vector<int>* chunkIndicesInBuffer;
+    SBIType type = SBIType::None;
+    int streamingAdvanceInChunks;
+    size_t sampleLength;
+    int chunkIndex;
+    size_t indexInChunk;
+    int chunkIndexInBuffer;
+    float* chunkStartPtr;
+    float* data;
 };
 
 //TODO: when playing hard (many notes fast ) there is a problem that iterators get strange
@@ -91,19 +100,14 @@ class StreamingBufferIterator {
 
 //I might get race conditions here. it would be better to have an array of mutex locks for the states.
 struct ChunkState {
-    std::atomic<int> ownerKey{-1};
-    std::atomic<int> ownerVelocity{-1};
-    std::atomic<int> chunkIndex{-1};
+    std::atomic<int> ownerKey{CHUNKSTATE_INVALID};
+    std::atomic<int> ownerVelocity{CHUNKSTATE_INVALID};
+    std::atomic<int> chunkIndex{CHUNKSTATE_INVALID};
     std::atomic<bool> writeProtected{false};
+    std::atomic<bool> chunkReady{false};
 
-    void set(SampleIdentifier sampleIdentifier, int chunkIndex, bool writeProtected);
+    void set(SampleIdentifier sampleIdentifier, int chunkIndex, bool writeProtected, bool inChunkReady);
 };
-static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
-static constexpr int CHUNK_INVALID = std::numeric_limits<int>::max() - 1;
-static constexpr int ITERATOR_INVALID = std::numeric_limits<int>::max() - 2;
-static constexpr int DEFAULT_STREAMING_CHUNK_SIZE = 8820;
-
-
 
 class StreamingBuffer {
 public:
@@ -118,11 +122,11 @@ public:
 
     void setFolderPath(std::string path){folderPath = path;}
 
-    StreamingBufferIterator& begin(SampleIdentifier sampleIdentifier, SBIType type);
+    StreamingBufferIterator& begin(SampleIdentifier sampleIdentifier, SBIType type, float playbackRate = 1.0);
 
     void sendStreamStartsMessages();
 
-    void eraseIterator(StreamingBufferIterator& iterator);
+    void releaseIterator(StreamingBufferIterator& iterator);
 
     void audioCheckAndWorkMessages();
 
@@ -132,8 +136,6 @@ public:
     bool streamerIsInFlight(){return audioStreamer.streamerIsInFlight();}
     
     void streamFullSample(SampleIdentifier sampleIdentifier);
-
-    void flushToDisk(SampleIdentifier sampleIdentifier){audioStreamer.flushToDisk(sampleIdentifier);}
 
     std::string filename(SampleIdentifier sampleIdentifier){return folderPath + "/" + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + ".wav";}
 
@@ -151,15 +153,17 @@ public:
 
     int findFreeChunk();
 
+    std::vector<int>& getChunkIndicesInBuffer(SampleIdentifier sampleIdentifier);
+
+    int assignToFreeChunk(SampleIdentifier sampleIdentifier, int chunkIndex, std::vector<int>& chunkIndicesInBuffer);
+
     void stopWork();
 
-    void mutate(StreamingMessage msg);
+    void workMutateMessage(StreamingMessage msg);
 
     void printInfo();
 
     void printIterators();
-
-    void stream(StreamingMessage msg){audioStreamer.stream(msg);}
 
     void taskWorkMessage(std::string& taskName, StreamingMessage msg);
 
@@ -182,7 +186,7 @@ private:
     AudioStreamer audioStreamer;
     ChunkState* chunkStates = nullptr;
     std::vector<std::vector<float>> chunks;
-    std::unordered_map<SampleIdentifier, std::vector<int>> chunkIndicesInBuffer; //synchronize with audioStreamer
+    std::unordered_map<SampleIdentifier, std::vector<int>> chunkIndicesInBufferMap; //synchronize with audioStreamer
     size_t StreamingBufferIteratorAssignIndex = 0;
 
     std::atomic<size_t> freeChunkSearchIdx{0};
@@ -212,3 +216,4 @@ private:
     std::string mutateDataTaskName;
     TaskWrapper<StreamingBuffer, StreamingMessage> mutateDataTask;
 };
+

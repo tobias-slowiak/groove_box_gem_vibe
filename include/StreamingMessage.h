@@ -3,10 +3,7 @@
 #include "../include/SampleIdentifier.h"
 
 enum class StreamingMessageType : int {
-    ChunkReady,
-    InvalidatedChunk,
     StreamChunk,
-    AssignChunk,
     InitializeSample,
     Clear,
     FlushInfo,
