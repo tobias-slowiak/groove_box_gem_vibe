@@ -1,5 +1,6 @@
 #include "../include/StreamingBuffer.h"
-
+#include "../include/BasicUtilities.h"
+//compile
 
 ///////////ElementProxy///////////
 
@@ -22,7 +23,7 @@ ElementProxy& ElementProxy::operator=(float value){
 
 ElementProxy::operator float() const {
     if(iterator.sampleIdentifier.first == ITERATOR_INVALID){
-        throw std::runtime_error("reading from invalid iterator");
+        return END_OF_SAMPLE;
     }
     assert(iterator.data != nullptr && "ElementProxy::operator float data null");
     return *(iterator.data);
@@ -33,7 +34,7 @@ ElementProxy::operator float() const {
 namespace {
     std::vector<int> EMPTY_CHUNK_INDEX_VECTOR = std::vector<int>();
 }
-StreamingBufferIterator::StreamingBufferIterator(StreamingBuffer* parent)
+StreamingBufferIterator::StreamingBufferIterator(StreamingBuffer& parent)
         : sampleIdentifier({ITERATOR_INVALID,ITERATOR_INVALID}),
         index(0),
         parent(parent),
@@ -46,7 +47,6 @@ StreamingBufferIterator::StreamingBufferIterator(StreamingBuffer* parent)
         chunkIndexInBuffer(ITERATOR_INVALID),
         chunkStartPtr(nullptr),
         data(nullptr){
-    assert(parent != nullptr && "StreamingBufferIterator null parent in default ctor");
 }
 
 
@@ -61,43 +61,43 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
         throw std::runtime_error("using ++ on invalid iterator");
     }
     index++;
+    if(index >= sampleLength){
+        ++data;
+        if(sampleLength % parent.chunkLength != 0)
+            assert(*data == END_OF_SAMPLE);
+        this->release();
+        return *this;
+    }
     indexInChunk++;
-    if(indexInChunk >= parent->chunkLength){
+    if(indexInChunk >= parent.chunkLength){
         ++chunkIndex;
         indexInChunk = 0;
-        assert(chunkIndexInBuffer < parent->totalNumberOfChunks);
-        ChunkState& oldChunkState = parent->chunkStates[chunkIndexInBuffer];
-        assert(chunkIndex < chunkIndicesInBuffer->size() && "StreamingBufferIterator::operator++ chunkIndex out of range before read");
-        chunkIndexInBuffer = chunkIndicesInBuffer->at(chunkIndex);
-        assert(chunkIndexInBuffer < parent->totalNumberOfChunks);
-        ChunkState& chunkState = parent->chunkStates[chunkIndexInBuffer];
+        assert(chunkIndexInBuffer < parent.totalNumberOfChunks);
+        ChunkState& oldChunkState = parent.chunkStates[chunkIndexInBuffer];
+        chunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, chunkIndex);
+        assert(chunkIndexInBuffer < parent.totalNumberOfChunks);
+        ChunkState& chunkState = parent.chunkStates[chunkIndexInBuffer];
 
         if(type == SBIType::Read){
-            if(chunkIndex + streamingAdvanceInChunks <= sampleLength / parent->chunkLength){
-                int chunkIndexInBufferForStream = chunkIndicesInBuffer->at(chunkIndex + streamingAdvanceInChunks);
+            if(chunkIndex + streamingAdvanceInChunks <= sampleLength / parent.chunkLength){
+                int chunkIndexInBufferForStream = VEC_AT(*chunkIndicesInBuffer, chunkIndex + streamingAdvanceInChunks);
                 if(chunkIndexInBufferForStream == CHUNK_INVALID)
-                    parent->audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + streamingAdvanceInChunks, *chunkIndicesInBuffer);
+                    parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + streamingAdvanceInChunks, *chunkIndicesInBuffer);
             }
             if(chunkIndexInBuffer == CHUNK_INVALID) throw std::runtime_error("apparently the stream chunk message was never sent");
-            if(!chunkState.chunkReady.load(std::memory_order_acquire)) throw std::runtime_error("stream too slow");
+            if(!chunkState.chunkReady.load(std::memory_order_acquire)) throw std::runtime_error("stream too slow for "+ std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + " and chunk " + std::to_string(chunkIndex)+ " with total number of chunks " + std::to_string(std::ceil((float)sampleLength / parent.chunkLength)));
         }
         if(type == SBIType::Write){
             oldChunkState.chunkReady.store(true, std::memory_order_release); 
-            if(chunkIndexInBuffer == CHUNK_INVALID) chunkIndexInBuffer = parent->assignToFreeChunk(sampleIdentifier, chunkIndex, *chunkIndicesInBuffer);            
+            if(chunkIndexInBuffer == CHUNK_INVALID) chunkIndexInBuffer = parent.assignToFreeChunk(sampleIdentifier, chunkIndex, *chunkIndicesInBuffer);            
         }
 
-        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent->chunks.size() && "StreamingBufferIterator::operator++ chunkIndexInBuffer out of range");
-        chunkStartPtr = parent->chunks.at(chunkIndexInBuffer).data();
+        chunkStartPtr = VEC_AT(parent.chunks, chunkIndexInBuffer).data();
         data = chunkStartPtr;
     } else {
         ++data;
     }
     assert(data != nullptr && "StreamingBufferIterator::operator++ data null after reassignment");
-    if(index >= sampleLength){
-        ++data;
-        assert(*data == END_OF_SAMPLE);
-        this->release();
-    }
     return *this;
 }
 
@@ -105,31 +105,27 @@ void StreamingBufferIterator::set(SampleIdentifier sampleIdentifier,
                                 std::vector<int>* chunkIndicesInBuffer,
                                 SBIType type,
                                 int streamingAdvanceInChunks){
-    auto lengthIt = parent->availableSamples.find(sampleIdentifier);
-    if(lengthIt == parent->availableSamples.end()){
-        throw std::runtime_error("StreamingBufferIterator::set: sampleIdentifier missing from availableSamples");
-    }
+    this->sampleLength = parent.getSampleLength(sampleIdentifier);
     this->sampleIdentifier = sampleIdentifier;
     this->index = 0;
     this->chunkIndicesInBuffer = chunkIndicesInBuffer;
     this->type = type;
-    this->sampleLength = lengthIt->second;
     assert(this->sampleLength > 0 && "StreamingBufferIterator::set sampleLength must be > 0");
 
     this->chunkIndex = 0;
     this->indexInChunk = 0;
     assert(chunkIndicesInBuffer != nullptr  && chunkIndicesInBuffer->size() != 0 && "StreamingBufferIterator::set chunkIndicesInBuffer null");
-    this->chunkIndexInBuffer = chunkIndicesInBuffer->at(0);
-    assert(chunkIndexInBuffer != CHUNK_INVALID && "first chunk has to be ready before iterator");
-    assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent->chunks.size() && "StreamingBufferIterator::set chunkIndexInBuffer out of range");
-    this->chunkStartPtr = parent->chunks.at(chunkIndexInBuffer).data();
+    this->chunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, 0);
+    this->chunkStartPtr = VEC_AT(parent.chunks, chunkIndexInBuffer).data();
     this->data = chunkStartPtr;
     
     if(this->type == SBIType::Read){
         for(int i = 0; i <= streamingAdvanceInChunks; i++){
-            int chunkIndexInBufferForStream = chunkIndicesInBuffer->at(chunkIndex + i);
+            if(chunkIndex + i >= chunkIndicesInBuffer->size())
+                break;
+            int chunkIndexInBufferForStream = VEC_AT(*chunkIndicesInBuffer, chunkIndex + i);
             if(chunkIndexInBufferForStream == CHUNK_INVALID)
-                parent->audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + i, *chunkIndicesInBuffer);
+                parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + i, *chunkIndicesInBuffer);
         }
     }
 }
@@ -148,5 +144,5 @@ void StreamingBufferIterator::initialize(){
 }
 
 void StreamingBufferIterator::release(){
-    parent->releaseIterator(*this);
+    parent.releaseIterator(*this);
 }

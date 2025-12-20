@@ -146,6 +146,13 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager* ResourceM
 			display->setLines(0, 0, "Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue");
 		}
 	}
+
+		for(unsigned int n = 0; n < resourceManager->audioFramesPerBlock; n++) {
+		float frame = 0.0f;
+		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
+            audioWrite(context, n, ch,  frame);
+        }
+	}
 }
 
 void ModeManager::renderNormal(BelaContext *context, ResourceManager* resourceManager){

@@ -16,6 +16,7 @@
 
 #include <Bela.h>
 #include <libraries/AudioFile/AudioFile.h>
+#include "../include/BasicUtilities.h"
 #include "../include/SampleIdentifier.h"
 #include "../include/DebugLog.h"
 #include "../include/ResourceManager.h"
@@ -24,12 +25,12 @@
 #include "../include/AudioStreamer.h"
 
 static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
-static constexpr int CHUNK_INVALID = std::numeric_limits<int>::max() - 1;
-static constexpr int ITERATOR_INVALID = std::numeric_limits<int>::max() - 2;
-static constexpr int CHUNKSTATE_INVALID = std::numeric_limits<int>::max() - 3;
+static constexpr int CHUNK_INVALID = MAX_INT - 1, ITERATOR_INVALID = MAX_INT - 2, CHUNKSTATE_INVALID = MAX_INT - 3;
 static constexpr int DEFAULT_STREAMING_CHUNK_SIZE = 8820;
-static constexpr int ARBITRARY_VALUE = std::numeric_limits<int>::max() - 4;
 static constexpr int DEFAULT_STREAMING_ADVANCE_IN_CHUNKS = 2;
+//return codes for sampleInUse function
+static constexpr int NOT_IN_USE = 0, IT_EXISTS = MAX_INT - 101, FLUSH_EXISTS = MAX_INT - 102, BOTH_EXIST = MAX_INT - 103;
+
 
 class StreamingBuffer;
 class StreamingBufferIterator;
@@ -54,34 +55,33 @@ class ElementProxy {
 class StreamingBufferIterator {
 public:
     ElementProxy operator*(){
-        assert(parent != nullptr && "StreamingBufferIterator::operator* parent null");
         return ElementProxy(*this);
     }
-
-    StreamingBufferIterator(StreamingBuffer* parent);
 
     StreamingBufferIterator& operator++();      // pre-increment
 
     StreamingBufferIterator operator++(int);    // post-increment
-
-    void set(SampleIdentifier sampleIdentifier,
-            std::vector<int>* chunkIndicesInBuffer,
-            SBIType type,
-            int streamingAdvanceInBlock = DEFAULT_STREAMING_ADVANCE_IN_CHUNKS);
-
-    void initialize();
 
     void release();
 
     SampleIdentifier sampleIdentifier;
 
 private:
+    StreamingBufferIterator(StreamingBuffer& parent);
+
+    void set(SampleIdentifier sampleIdentifier,
+        std::vector<int>* chunkIndicesInBuffer,
+        SBIType type,
+        int streamingAdvanceInBlock = DEFAULT_STREAMING_ADVANCE_IN_CHUNKS);
+
+    void initialize();
+
     friend class StreamingBuffer;
     friend class AudioStreamer;
     friend class ElementProxy;
 
     size_t index;
-    StreamingBuffer* parent;
+    StreamingBuffer& parent;
     std::vector<int>* chunkIndicesInBuffer;
     SBIType type = SBIType::None;
     int streamingAdvanceInChunks;
@@ -93,12 +93,7 @@ private:
     float* data;
 };
 
-//TODO: when playing hard (many notes fast ) there is a problem that iterators get strange
-//pointers to chunk, so when hitting a note it starts out with a couple of right chunks, but
-//then it wildly jumps around in the chunks of multiple samples. so the assignment of chunks needs to
-//be mrore strict
-
-//I might get race conditions here. it would be better to have an array of mutex locks for the states.
+//TODO: only the bools need to be atomic, everything else is audio thread only
 struct ChunkState {
     std::atomic<int> ownerKey{CHUNKSTATE_INVALID};
     std::atomic<int> ownerVelocity{CHUNKSTATE_INVALID};
@@ -124,18 +119,27 @@ public:
 
     StreamingBufferIterator& begin(SampleIdentifier sampleIdentifier, SBIType type, float playbackRate = 1.0);
 
-    void sendStreamStartsMessages();
-
-    void releaseIterator(StreamingBufferIterator& iterator);
-
-    void audioCheckAndWorkMessages();
-
+    //TODO for the future: maybe let this be and only checkandworkmessages when sent.
     void processBlockwise();
 
     //the two following methods are only for the bandwidth test
     bool streamerIsInFlight(){return audioStreamer.streamerIsInFlight();}
     
     void streamFullSample(SampleIdentifier sampleIdentifier);
+
+    void printInfo();
+
+    void printIterators();
+    
+    void taskWorkMessage(std::string& taskName, StreamingMessage msg);
+
+private:
+
+    int sampleInUse(SampleIdentifier sampleIdentifier);
+
+    void sendStreamStartsMessages();
+
+    void releaseIterator(StreamingBufferIterator& iterator);
 
     std::string filename(SampleIdentifier sampleIdentifier){return folderPath + "/" + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + ".wav";}
 
@@ -153,21 +157,18 @@ public:
 
     int findFreeChunk();
 
-    std::vector<int>& getChunkIndicesInBuffer(SampleIdentifier sampleIdentifier);
-
     int assignToFreeChunk(SampleIdentifier sampleIdentifier, int chunkIndex, std::vector<int>& chunkIndicesInBuffer);
+
+    size_t getSampleLength(SampleIdentifier sampleIdentifier);
+
+    std::vector<int>& getChunkIndicesInBuffer(SampleIdentifier sampleIdentifier);
 
     void stopWork();
 
     void workMutateMessage(StreamingMessage msg);
 
-    void printInfo();
 
-    void printIterators();
 
-    void taskWorkMessage(std::string& taskName, StreamingMessage msg);
-
-private:
     friend class AudioStreamer;
     friend class StreamingBufferIterator;
     friend class SamplePack;
@@ -184,6 +185,7 @@ private:
     std::unordered_map<SampleIdentifier, size_t>& availableSamples;
     std::vector<StreamingBufferIterator> iterators;
     AudioStreamer audioStreamer;
+    //TODO: make this a vector?
     ChunkState* chunkStates = nullptr;
     std::vector<std::vector<float>> chunks;
     std::unordered_map<SampleIdentifier, std::vector<int>> chunkIndicesInBufferMap; //synchronize with audioStreamer

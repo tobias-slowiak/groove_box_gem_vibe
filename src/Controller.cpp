@@ -116,14 +116,12 @@ void Controller::processBlockwise(){
 						if(event == RotaryEncoderEvent::Left){
 							currentInstrumentIndex--; //TODO: make this go around
 							//currentInstrumentIndex = currentInstrumentIndex % instrumentStrings.size();
-							//assert(currentInstrumentIndex >=0 && currentInstrumentIndex < instrumentStrings.size());
-							//currentInstrumentString = instrumentStrings.at(currentInstrumentIndex);
+							//currentInstrumentString = VEC_AT(instrumentStrings, currentInstrumentIndex);
 						}
 						if(event == RotaryEncoderEvent::Right){
 							currentInstrumentIndex++; //TODO: make this go around
 							currentInstrumentIndex = currentInstrumentIndex % instrumentStrings.size();
-							assert(currentInstrumentIndex >=0 && currentInstrumentIndex < instrumentStrings.size());
-							currentInstrumentString = instrumentStrings.at(currentInstrumentIndex);
+							currentInstrumentString = VEC_AT(instrumentStrings, currentInstrumentIndex);
 						}
 						if(event == RotaryEncoderEvent::Push){
 							keyInstrumentSamplePack->initForFolder("/mnt/sdcard/Samples/" + currentInstrumentString);
@@ -265,20 +263,20 @@ void Controller::updateLooperLights(){
 	/*
 		looperStateHasChanged = false;
 		for(int looperIndex = 0; looperIndex < numberOfLoopers; looperIndex++){
-			if(loopers->isPlaying(looperIndex)) controlMidi->writeMessage(0x90, 15, looperToPlayControl.at(looperIndex), LED_COLORS::GREEN);
-			else controlMidi->writeMessage(0x90, 15, looperToPlayControl.at(looperIndex), LED_COLORS::OFF);
+			if(loopers->isPlaying(looperIndex)) controlMidi->writeMessage(0x90, 15, VEC_AT(looperToPlayControl, looperIndex), LED_COLORS::GREEN);
+			else controlMidi->writeMessage(0x90, 15, VEC_AT(looperToPlayControl, looperIndex), LED_COLORS::OFF);
 			LooperState s = loopers->getState(looperIndex);
-			if(s == LooperState::Empty) controlMidi->writeMessage(0x90, 15, looperToRecControl.at(looperIndex), LED_COLORS::OFF);
+			if(s == LooperState::Empty) controlMidi->writeMessage(0x90, 15, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::OFF);
 			if(s == LooperState::HoldingOut){
-				controlMidi->writeMessage(0x90, 15, looperToRecControl.at(looperIndex), LED_COLORS::RED);
-				controlMidi->writeMessage(0x90, 1, looperToRecControl.at(looperIndex), LED_COLORS::OFF); //flashing between red and off
+				controlMidi->writeMessage(0x90, 15, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::RED);
+				controlMidi->writeMessage(0x90, 1, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::OFF); //flashing between red and off
 			}
-			if(s == LooperState::FirstRecording) controlMidi->writeMessage(0x90, 15, looperToRecControl.at(looperIndex), LED_COLORS::RED);
+			if(s == LooperState::FirstRecording) controlMidi->writeMessage(0x90, 15, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::RED);
 			if(s == LooperState::RunningOut){
-				controlMidi->writeMessage(0x90, 1, looperToRecControl.at(looperIndex), LED_COLORS::OFF); //flashing between red and off
+				controlMidi->writeMessage(0x90, 1, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::OFF); //flashing between red and off
 			}
-			if(s == LooperState::Recording) controlMidi->writeMessage(0x90, 15, looperToRecControl.at(looperIndex), LED_COLORS::RED);
-			if(s == LooperState::NotRecording) controlMidi->writeMessage(0x90, 15, looperToRecControl.at(looperIndex), LED_COLORS::OFF);
+			if(s == LooperState::Recording) controlMidi->writeMessage(0x90, 15, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::RED);
+			if(s == LooperState::NotRecording) controlMidi->writeMessage(0x90, 15, VEC_AT(looperToRecControl, looperIndex), LED_COLORS::OFF);
 		}
 		*/
 	}

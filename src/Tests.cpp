@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstdint>
 #include<unordered_map>
-//compile
 
 #include "../include/ModeManager.h"
 #include "../include/ResourceManager.h"
@@ -104,10 +103,12 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager* resour
 
 	if(blocksElapsed == 1){
 		sp->triggerVoice(96,2);
+		
 		sp->triggerVoice(96,3);
 		sp->triggerVoice(96,4);
 		sp->triggerVoice(99,5);
 		sp->triggerVoice(99,6);
+		
 	}
 
 	if(blocksElapsed == 15000){
