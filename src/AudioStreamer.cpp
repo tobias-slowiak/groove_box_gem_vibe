@@ -67,7 +67,7 @@ void AudioStreamer::workStreamMessage(StreamingMessage msg){ //stream thread onl
             for(size_t i = 0; i < parent.chunkLength; i++){
                 VEC_AT(chunk, i) = VEC_AT(s_streamBuffer, i);
             }
-            parent.chunkStates[chunkIndexInBuffer].chunkReady.store(true, std::memory_order_release);
+            VEC_AT(parent.chunkStates, chunkIndexInBuffer).chunkReady.store(true, std::memory_order_release);
         } else {
             throw std::runtime_error("StreamingBuffer::initForFolder: failed to load sample" + parent.filename(msg.sampleIdentifier) + " sdfilereadstartindex = " + std::to_string(sdFileReadStartIndex) + " sdfilereadendindex = " + std::to_string(sdFileReadEndIndex) + "sampleLengthInFrames = " + std::to_string(sampleLengthInFrames));
         }

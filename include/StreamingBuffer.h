@@ -24,6 +24,7 @@
 #include "../include/TaskWrapper.h"
 #include "../include/AudioStreamer.h"
 
+
 static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
 static constexpr int CHUNK_INVALID = MAX_INT - 1, ITERATOR_INVALID = MAX_INT - 2, CHUNKSTATE_INVALID = MAX_INT - 3;
 static constexpr int DEFAULT_STREAMING_CHUNK_SIZE = 8820;
@@ -185,8 +186,7 @@ private:
     std::unordered_map<SampleIdentifier, size_t>& availableSamples;
     std::vector<StreamingBufferIterator> iterators;
     AudioStreamer audioStreamer;
-    //TODO: make this a vector?
-    ChunkState* chunkStates = nullptr;
+    std::vector<ChunkState> chunkStates;
     std::vector<std::vector<float>> chunks;
     std::unordered_map<SampleIdentifier, std::vector<int>> chunkIndicesInBufferMap; //synchronize with audioStreamer
     size_t StreamingBufferIteratorAssignIndex = 0;

@@ -29,7 +29,7 @@ StreamingBuffer::StreamingBuffer(ResourceManager* resourceManager,
             availableSamples(availableSamples),
             iterators(std::vector<StreamingBufferIterator>(totalNumberOfIterators, StreamingBufferIterator(*this))),
             audioStreamer(*this),
-            chunkStates(new ChunkState[totalNumberOfChunks]),
+            chunkStates(totalNumberOfChunks),
             chunks(totalNumberOfChunks, std::vector<float>(chunkLength)),
             mutateDataTaskName(bufferName + "_MTask"),
             mutateDataTask(this, mutateDataPrio, mutateDataTaskName)
@@ -39,7 +39,6 @@ StreamingBuffer::StreamingBuffer(ResourceManager* resourceManager,
     assert(totalNumberOfIterators > 0 && "StreamingBuffer ctor totalNumberOfIterators must be > 0");
     assert(chunkLength > 0 && "StreamingBuffer ctor chunkLength must be > 0");
     assert(totalNumberOfChunks > 0 && "StreamingBuffer ctor totalNumberOfChunks must be > 0");
-    assert(chunkStates != nullptr && "StreamingBuffer ctor chunkStates allocation failed");
     assert(chunks.size() == static_cast<size_t>(totalNumberOfChunks) && "StreamingBuffer ctor chunks size mismatch");
     assert(iterators.size() == static_cast<size_t>(totalNumberOfIterators) && "StreamingBuffer ctor iterators size mismatch");
     DEBUG_PRINTF("StreamingBuffer ctor(dynamic): bufferFrames=%u chunkLen=%d totalChunks=%d iters=%d name=%s path=%s\n",
@@ -52,7 +51,7 @@ StreamingBuffer::StreamingBuffer(ResourceManager* resourceManager,
 }
 
 StreamingBuffer::~StreamingBuffer(){
-    delete[] chunkStates;
+    // chunkStates is now a vector, no manual deletion needed
 }
 
 void StreamingBuffer::taskWorkMessage(std::string& taskName, StreamingMessage msg){
@@ -78,7 +77,6 @@ void StreamingBuffer::stopWork(){
 }
 
 void StreamingBuffer::workMutateMessage(StreamingMessage msg){
-    assert(chunkStates != nullptr && "StreamingBuffer::workMutateMessage chunkStates null");
     if(msg.type == StreamingMessageType::releaseMutateOngoing){
         mutateOngoing.store(false, std::memory_order_acquire);
     }
@@ -90,7 +88,7 @@ void StreamingBuffer::workMutateMessage(StreamingMessage msg){
             for(int chunkIndexInBuffer: chunkIndicesInBuffer){
                 if(chunkIndexInBuffer != CHUNK_INVALID){
                     assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < totalNumberOfChunks && "StreamingBuffer::workMutateMessage reset chunkIndexInBuffer out of range");
-                    chunkStates[chunkIndexInBuffer].set({CHUNKSTATE_INVALID, CHUNKSTATE_INVALID}, CHUNKSTATE_INVALID, false, false);
+                    VEC_AT(chunkStates, chunkIndexInBuffer).set({CHUNKSTATE_INVALID, CHUNKSTATE_INVALID}, CHUNKSTATE_INVALID, false, false);
                 }
             }
         }
@@ -102,7 +100,7 @@ void StreamingBuffer::workMutateMessage(StreamingMessage msg){
         audioStreamer.pendingFlushes.clear();
         audioStreamer.f_numberOfFlushableChunks.clear();
         for(size_t chunkStateIndex = 0; chunkStateIndex < static_cast<size_t>(totalNumberOfChunks); chunkStateIndex++){
-            chunkStates[chunkStateIndex].set({CHUNKSTATE_INVALID, CHUNKSTATE_INVALID}, CHUNKSTATE_INVALID, false, false);
+            VEC_AT(chunkStates, chunkStateIndex).set({CHUNKSTATE_INVALID, CHUNKSTATE_INVALID}, CHUNKSTATE_INVALID, false, false);
         }
     }
 }
@@ -128,7 +126,7 @@ StreamingBufferIterator& StreamingBuffer::begin(SampleIdentifier sampleIdentifie
     //see if first chunk is valid
     int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, 0);
     assert(chunkIndexInBuffer > 0 && chunkIndexInBuffer < totalNumberOfChunks);
-    ChunkState& chunkState = chunkStates[chunkIndexInBuffer];
+    ChunkState& chunkState = VEC_AT(chunkStates, chunkIndexInBuffer);
     if(type == SBIType::Read){
         if(chunkIndexInBuffer == CHUNK_INVALID) throw std::runtime_error("apparently the stream chunk message was never sent");
         if(!chunkState.chunkReady.load(std::memory_order_acquire)) throw std::runtime_error("first chunk should always be ready for read iterator");
@@ -147,7 +145,6 @@ StreamingBufferIterator& StreamingBuffer::begin(SampleIdentifier sampleIdentifie
 }
 
 void StreamingBuffer::sendStreamStartsMessages(){
-    assert(chunkStates != nullptr && "StreamingBuffer::streamStarts chunkStates null");
     for(auto& sampleInfo: availableSamples){
         SampleIdentifier sampleIdentifier = sampleInfo.first;
         std::vector<int>& chunkIndicesInBuffer = getChunkIndicesInBuffer(sampleIdentifier);
@@ -209,7 +206,7 @@ void StreamingBuffer::streamFullSample(SampleIdentifier sampleIdentifier){
             audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex, chunkIndicesInBuffer);
         }else{
             assert(chunkIndexInBuffer > 0 && chunkIndexInBuffer < totalNumberOfChunks);
-            if(!chunkStates[chunkIndexInBuffer].chunkReady.load(std::memory_order_acquire))
+            if(!VEC_AT(chunkStates, chunkIndexInBuffer).chunkReady.load(std::memory_order_acquire))
                 audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex, chunkIndicesInBuffer);
         }
     }
@@ -220,8 +217,7 @@ void StreamingBuffer::protectSample(SampleIdentifier sampleIdentifier){
     for(int chunkIndex = 0; chunkIndex < chunkIndicesInBuffer.size(); chunkIndex++){
         int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, chunkIndex);
         if(chunkIndexInBuffer == CHUNK_INVALID) continue;
-        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < chunks.size() && "protectsample: chunkIndexInBuffer out of range");
-        chunkStates[chunkIndexInBuffer].writeProtected.store(true, std::memory_order_release);
+        VEC_AT(chunkStates, chunkIndexInBuffer).writeProtected.store(true, std::memory_order_release);
     }
 }
 
@@ -230,8 +226,7 @@ void StreamingBuffer::unProtectSample(SampleIdentifier sampleIdentifier){
     for(int chunkIndex = 0; chunkIndex < chunkIndicesInBuffer.size(); chunkIndex++){
         int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, chunkIndex);
         if(chunkIndexInBuffer == CHUNK_INVALID) continue;
-        assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < chunks.size() && "unprotectsample: chunkIndexInBuffer out of range");
-        chunkStates[chunkIndexInBuffer].writeProtected.store(false, std::memory_order_release);
+        VEC_AT(chunkStates, chunkIndexInBuffer).writeProtected.store(false, std::memory_order_release);
     }
 }
 
@@ -275,7 +270,7 @@ void StreamingBuffer::printInfo(){
     rt_printf("StreamingBuffer info:\n");
     rt_printf("  name=%s path=%s\n", bufferName.c_str(), folderPath.c_str());
     rt_printf("  chunkLength=%d totalChunks=%d iterators=%d\n", chunkLength, totalNumberOfChunks, totalNumberOfIterators);
-    rt_printf("  chunks size=%zu chunkStates=%s\n", chunks.size(), chunkStates ? "yes" : "no");
+    rt_printf("  chunks size=%zu chunkStates=%zu\n", chunks.size(), chunkStates.size());
     rt_printf("  availableSamples=%zu chunkIndicesInBufferMap=%zu\n", availableSamples.size(), chunkIndicesInBufferMap.size());
     int counter = 0;
     for(auto& availableSample: availableSamples){
@@ -302,15 +297,13 @@ void StreamingBuffer::printIterators(){
 }
 
 int StreamingBuffer::findFreeChunk(){
-    assert(chunkStates != nullptr && "findFreeChunk chunkStates null");
-
     // Start from a rotating index to avoid scanning from 0 each time.
     size_t start = freeChunkSearchIdx.fetch_add(1, std::memory_order_acq_rel) % totalNumberOfChunks;
     for(size_t offset = 0; offset < totalNumberOfChunks; ++offset){
         size_t chunkIndexInBuffer = (start + offset) % totalNumberOfChunks;
-        int chunkIndex = chunkStates[chunkIndexInBuffer].chunkIndex.load(std::memory_order_acquire);
+        int chunkIndex = VEC_AT(chunkStates, chunkIndexInBuffer).chunkIndex.load(std::memory_order_acquire);
         if(chunkIndex != 0){ //NEVER OVERWRITE A FIRST CHUNK
-            if(!( chunkStates[chunkIndexInBuffer].writeProtected.load(std::memory_order_acquire) )){
+            if(!( VEC_AT(chunkStates, chunkIndexInBuffer).writeProtected.load(std::memory_order_acquire) )){
                 return static_cast<int>(chunkIndexInBuffer);
             }
         }
@@ -324,8 +317,7 @@ int StreamingBuffer::assignToFreeChunk(SampleIdentifier sampleIdentifier, int ch
     VEC_AT(chunkIndicesInBuffer, chunkIndex) = chunkIndexInBuffer;
 
     //update ownership of the chunk
-    assert(chunkStates != nullptr && chunkIndexInBuffer < totalNumberOfChunks && "StreamingBuffer::begin chunkStates null");
-    ChunkState& chunkState = chunkStates[chunkIndexInBuffer];
+    ChunkState& chunkState = VEC_AT(chunkStates, chunkIndexInBuffer);
     SampleIdentifier oldSampleIdentifier = {chunkState.ownerKey.load(std::memory_order_acquire), 
                                             chunkState.ownerVelocity.load(std::memory_order_acquire)};
     int oldChunkIndex = chunkState.chunkIndex.load(std::memory_order_acquire);

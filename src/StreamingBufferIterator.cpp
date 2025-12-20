@@ -72,11 +72,9 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
     if(indexInChunk >= parent.chunkLength){
         ++chunkIndex;
         indexInChunk = 0;
-        assert(chunkIndexInBuffer < parent.totalNumberOfChunks);
-        ChunkState& oldChunkState = parent.chunkStates[chunkIndexInBuffer];
+        ChunkState& oldChunkState = VEC_AT(parent.chunkStates, chunkIndexInBuffer);
         chunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, chunkIndex);
-        assert(chunkIndexInBuffer < parent.totalNumberOfChunks);
-        ChunkState& chunkState = parent.chunkStates[chunkIndexInBuffer];
+        ChunkState& chunkState = VEC_AT(parent.chunkStates, chunkIndexInBuffer);
 
         if(type == SBIType::Read){
             if(chunkIndex + streamingAdvanceInChunks <= sampleLength / parent.chunkLength){
