@@ -66,6 +66,12 @@ If you modify pin or device mappings, update `include/DeviceMap.h` and note the 
 - Building on a development host may leave stale objects in `build/`. Remove the directory if new source files are not picked up.
 - When modifying MIDI code, run in an environment where ALSA devices exist or guard with connection flags to avoid hard failures.
 
+## Important Workflow Notes
+
+- **DO NOT attempt to compile on the development host** - compilation must be done on the Bela hardware target.
+- Code changes should be tested by deploying to Bela and running the actual hardware.
+- The development host is only for code editing and analysis, not for building or running the application.
+
 ---
 
 ## Communication

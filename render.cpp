@@ -2,8 +2,8 @@
 #include <libraries/Midi/Midi.h>
 #include <cassert>
 
-#include "include/ResourceManager.h"
-#include "include/ModeManager.h"
+#include "include/general/ResourceManager.h"
+#include "include/general/ModeManager.h"
 
 
 //TODO: make stack allocation instead of heap pointers wherever possible.
@@ -81,14 +81,13 @@ Notes:
 - debug prints on auxiliary tasks make the debugging more confusing because timing is irgendwos
 */
 
-ResourceManager* resourceManager;
+static ResourceManager resourceManager;
 
 
 bool setup(BelaContext *context, void *userData)
 {
 	assert(context != nullptr);
-	resourceManager = new ResourceManager();
-	resourceManager->setup(context);
+	resourceManager.setup(context);
 	printf("setup done\n");
 	return true;
 }
@@ -96,13 +95,11 @@ bool setup(BelaContext *context, void *userData)
 void render(BelaContext *context, void *userData)
 {
 	assert(context != nullptr);
-	assert(resourceManager != nullptr);
-	resourceManager->getModeManager()->render(context, resourceManager);
+	resourceManager.getModeManager().render(context, resourceManager);
 }
 
 void cleanup(BelaContext *context, void *userData)
 {
 	assert(context != nullptr);
-	assert(resourceManager != nullptr);
-	resourceManager->cleanup(context);
+	resourceManager.cleanup(context);
 }
