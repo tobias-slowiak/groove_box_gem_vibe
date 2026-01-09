@@ -8,7 +8,7 @@
 #include <utility>
 #include "../streamingBuffer/StreamingBuffer.h"
 #include "../general/TaskWrapper.h"
-
+//compile
 class StreamingBuffer;
 using SampleIdentifier = std::pair<int, int>;
 class ResourceManager;

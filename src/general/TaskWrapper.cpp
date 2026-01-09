@@ -6,7 +6,7 @@
 #include "../../include/streamingBuffer/StreamingMessage.h"
 #include "../../include/audio/SamplePack.h"
 //ATTENTION WHEN COMPILING! MIGHT DEMAND A -Rebuild!!
-//compile
+
 #include <errno.h>
 #include <utility>
 

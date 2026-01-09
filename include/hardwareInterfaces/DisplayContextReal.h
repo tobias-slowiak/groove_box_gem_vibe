@@ -5,7 +5,7 @@
 #include <atomic>
 #include <vector>
 #include <stdexcept>
-
+//compiel
 #include "IDisplayContext.h"
 class ResourceManager;
 #include "../general/TaskWrapper.h"
@@ -14,22 +14,22 @@ class ResourceManager;
 
 void displayThreadFunction(void* arg);
 
-std::vector<U8G2*> initU8G2s();
+std::vector<U8G2*> initU8G2s(int numLines);
 
 //////////////////////////////////////////////CLASS
 
 
 class DisplayContextReal : public IDisplayContext {
 public:
-    DisplayContextReal(ResourceManager& resourceManager, std::vector<U8G2*> u8g2s);
+    DisplayContextReal(ResourceManager& resourceManager, std::vector<U8G2*> u8g2s, int numLines);
     
     void initDisplayContext() override;
     
     void processBlockwise() override;
-	
-	void setLines(int displayNumber, int lineNumber, std::string line0, std::string line1 = "", std::string line2 = "", std::string line3 = "") override;
-	
+		
 	void setLines(std::vector<std::vector<std::string>>) override;
+    
+    void setLines(std::vector<std::vector<std::string>> lines, std::vector<std::vector<TextFrame>> textFrames) override;
 
     void sendTaskMessage();
 
@@ -47,11 +47,15 @@ private:
 
     ResourceManager& resourceManager;
 
-    int NUM_LINES = 4;
-    int LINE_HEIGHT = 15;
     int SCREEN_WIDTH = 128;
     int SCREEN_HEIGHT = 64;
     int PROGRESS_HEIGHT = 8;
+
+
+    const int NUM_LINES;
+    const uint8_t* FONT;
+    const int CHARACTER_HEIGHT;
+    const int CHARACTER_WIDTH;
 
 
 	std::vector<std::vector<std::string>> lines;
@@ -62,8 +66,13 @@ private:
     int progressDisplay = -1; //determines which display shows the progress bar
     float progress = 0.0f;
 
+    std::vector<std::vector<TextFrame>> textFrames;
+
     //render Task only
     std::vector<std::vector<std::string>> r_lines;
     int r_progressDisplay = -1; 
     float r_progress = 0.0f;
+    std::vector<std::vector<TextFrame>> r_textFrames;
+
+    
 };

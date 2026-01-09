@@ -1,7 +1,7 @@
 #include "../../include/audio/ADSR.h"
 #include "../../include/general/ResourceManager.h"
 #include <cassert>
-
+//compiel
 ADSR::ADSR(ADSR&& other) noexcept
 	: attackTime(other.attackTime),
 	  decayTime(other.decayTime),

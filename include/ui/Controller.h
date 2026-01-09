@@ -1,5 +1,5 @@
 #pragma once
-
+//compiel
 #include<Bela.h>
 #include <libraries/Midi/Midi.h>
 #include <string>
@@ -51,7 +51,7 @@ struct ZipperFreeGain {
 */
 
 
-enum class UIState {
+enum class UIStateOLD {
 	General,
     Instrument,
     Sampler,
@@ -77,7 +77,7 @@ public:
 	
 	bool togglePlay(int looper);
 	
-	bool inSamplerMode() {return state == UIState::Sampler;}
+	bool inSamplerMode() {return state == UIStateOLD::Sampler;}
 
 	float getVolumeMet() {return metronomeGain;}
 	
@@ -99,7 +99,7 @@ private:
 	SamplePack* keyInstrumentSamplePack;
 	SamplePack* drumInstrumentSamplePack;
 
-	UIState state = UIState::General;
+	UIStateOLD state = UIStateOLD::General;
 	int bpm = 120;
 	float outputGain = 1.0f;
 	float metronomeGain = 1.0f;

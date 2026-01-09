@@ -1,19 +1,43 @@
 #pragma once
 
-#include "../ui/UIState.h"
+#include "../general/BasicUtilities.h"
+//compile
 
+enum class GainId{
+    Master,
+    Instrument,
+    Metronome,
+    Looper,
+    Sampler,
+    InputL,
+    InputR,
+    COUNT
+};
 
 class Mixer{
 public:
-    float process(){
-        return 1.0f;
+    Mixer(){
+        for(int i = 0; i < (int)GainId::COUNT; i++){
+            gainz.push_back(1.0f);
+        }
     }
 
-    float inputGain;
-    
-    float instrumentGain;
-    float looperGain;
-    float samplerGain;
+    float mix(std::vector<float>& frames){
+        float frame = 0.0f;
+        for(int i = 0; i < (int)GainId::COUNT; i++){
+            frame += VEC_AT(gainz, i) * VEC_AT(frames, i);
+        }
+        return frame;
+    }
 
-    float masterGain;
+    void setGain(GainId gainId, float value){
+        VEC_AT(gainz, (int)gainId);
+    }
+
+    float getGain(GainId gainId){
+        return VEC_AT(gainz, (int)gainId);
+    }
+
+private:
+    std::vector<float> gainz;
 };

@@ -1,5 +1,5 @@
 #pragma once
-//compile
+
 #include <Bela.h>
 
 #include <memory>
@@ -23,6 +23,9 @@ class IMidi;
 #include "../audio/Loopers.h"
 #include "../audio/SamplePack.h"
 #include "../audio/Mixer.h"
+#include "../audio/InstrumentCatalog.h"
+#include "../ui/UI.h"
+#include "../ui/InputHandler.h"
 
 
 class ResourceManager{
@@ -35,7 +38,7 @@ public:
 
 	void processBlockwise();
 
-	float process(int n);
+	float getNextFrame(int n);
 	
 	//#########PUTTERS AND GETTERS
 	BelaContext* getBelaContext();
@@ -54,7 +57,11 @@ public:
 	
 	Controller& getController();
 
+	UI& getUI();
+
 	InstrumentCatalog& getInstrumentCatalog();
+
+	DrumCatalog& getDrumCatalog();
 
 	Mixer& getMixer();
 	
@@ -66,6 +73,7 @@ public:
 
 	SamplePack& getKeyInstrumentSamplePack();
 	
+	SamplePack& getDrumSamplePack();
 	
 	std::vector<float>* makeTestSample();
 	
@@ -88,8 +96,10 @@ public:
 	bool interfaceConnected = false;
 	bool keyMidiConnected = false;
 	bool controlMidiConnected = false;
+	bool keysInMelodicMode = true; //keys vs drums
 	float END_OF_SAMPLE = -999999.0f;
 	std::string SAMPLES_PATH = "/mnt/sdcard/Samples/";
+	int NUM_LINES_PER_DISPLAY = 4;
 	
 private:
 	BelaContext*context = nullptr;
@@ -97,6 +107,7 @@ private:
 	std::unique_ptr<DeviceMap> deviceMap;
 	BelaInterface* interface = nullptr;
 	
+	std::vector<float> frames;
 	std::unique_ptr<Controller> controller;
 	std::unique_ptr<Voices> voices;
 	std::unique_ptr<Samplers> samplers;
@@ -105,8 +116,12 @@ private:
 	std::unique_ptr<IMidi> keyMidi;
 	std::unique_ptr<IMidi> controlMidi;
 	std::unique_ptr<SamplePack> keyInstrumentSamplePack;
+	std::unique_ptr<SamplePack> drumSamplePack;
 	std::unique_ptr<Mixer> mixer;
+	std::unique_ptr<UI> ui;
+	std::unique_ptr<InputHandler> inputHandler;
 	InstrumentCatalog instrumentCatalog;
+	DrumCatalog drumCatalog;
 	
 	std::vector<float>* testSample = nullptr;
 	int testSampleSize = 0;

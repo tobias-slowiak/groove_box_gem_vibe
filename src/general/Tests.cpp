@@ -5,7 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include<unordered_map>
-
+//compiel
 #include "../../include/general/ModeManager.h"
 #include "../../include/general/ResourceManager.h"
 #include "../../include/streamingBuffer/StreamingBuffer.h"
@@ -22,6 +22,7 @@
 #include "../../include/audio/SamplePack.h"
 
 void ModeManager::renderBelaInterfaceTest(BelaContext *context, ResourceManager& resourceManager){
+	throw std::runtime_error("´got here");
 	assert(context != nullptr);
 	static int blocksElapsed = 0;
 	blocksElapsed++;
@@ -57,16 +58,16 @@ void ModeManager::renderDisplayContextTest(BelaContext *context, ResourceManager
 	IDisplayContext& display = resourceManager.getDisplayContext();
 	display.processBlockwise();
 	if(secondsElapsed(blocksElapsed, 1)){
-		display.setLines(0, 0, "hello");
+		display.setLines({	{"Hello from", "the left", "display!", ""}, {"and", "hello from", "the right", "display!"} });
 	}
 	if(secondsElapsed(blocksElapsed, 3) ){
-		display.setLines(0, 0, "hello", "how", "are", "you? :)");
+		display.setLines({{"hello", "how", "are", "you? :)"}, {"", "", "", ""}});
 	}
 	if(secondsElapsed(blocksElapsed, 5) ){
-		display.setLines(1, 0, "on", "the", "right", "display!");
+		display.setLines({{"on", "the", "right", "display!"}, {"", "", "", ""}});
 	}
 	if(secondsElapsed(blocksElapsed, 7) ){
-		display.setLines(0, 0, "progress", "bar:", " ", " ");//send spaces if you want to reset the whole display
+		display.setLines({{"progress", "bar:", " ", " "}, {"", "", " ", ""}});//send spaces if you want to reset the whole display
 		display.setProgress(0, 0.5);
 	}
 	if(secondsElapsed(blocksElapsed, 9) ){
@@ -83,7 +84,7 @@ void ModeManager::renderDisplayContextTest(BelaContext *context, ResourceManager
 		currentTestDone = true;
 		blocksElapsed = 0;
 		display.setProgress(0, -1.0);
-		display.setLines(1, 0, "", "", "", "");
+		display.setLines({{"", "", "", ""}, {"", "", "", ""}});
 	}
 }
 void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager& resourceManager){
@@ -313,39 +314,45 @@ void ModeManager::renderMidiTest(BelaContext *context, ResourceManager& resource
 
 void ModeManager::renderControllerTest(BelaContext *context, ResourceManager& resourceManager){
 	assert(context != nullptr);
+	
 	static int blocksElapsed = 0;
 	blocksElapsed++;
 
 	/*Sending messages in MidiFake Case*/
 	IMidi& keyMidi = resourceManager.getKeyMidi();
+	IMidi& controlMidi = resourceManager.getControlMidi();
 	if(!resourceManager.keyMidiConnected){
-		if(secondsElapsed(blocksElapsed, 1) || secondsElapsed(blocksElapsed, 2)){
+		if(secondsElapsed(blocksElapsed, 1)){
 			keyMidi.getParser()->pushMessage(33, 1, 0, kmmNoteOn);
+		}
+		if(secondsElapsed(blocksElapsed, 2)){
+			keyMidi.getParser()->pushMessage(36, 64, 1, kmmNoteOn);
+		}
+		if(secondsElapsed(blocksElapsed, 3)){
+			controlMidi.getParser()->pushMessage(96, 1, 9, kmmNoteOn);
 		}
 	}
 
 	/*MidiFake case done*/
-
-	Controller& controller = resourceManager.getController();
-	SamplePack& samplePack = resourceManager.getKeyInstrumentSamplePack();
-	controller.processBlockwise();
-	samplePack.processBlockwise();
 	
-	if((blocksElapsed * resourceManager.blocksPerSecond)%2 == 0){
-		//TODO: do something
+	resourceManager.processBlockwise();
+	
+	
+	if(blocksElapsed == 1){
+		resourceManager.getUI().updateDisplay();
 	}
+
 	if(secondsElapsed(blocksElapsed, 20) ){
 		currentTestDone = true;
 		blocksElapsed = 0;
 	}
 	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = 0.0f;
-		float inFrame = 0.0f;
-		frame += controller.process(inFrame);
+		float frame = resourceManager.getNextFrame(n);
 		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
             audioWrite(context, n, ch,  frame);
         }
 	}
+	
 }
 
 void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager& resourceManager){

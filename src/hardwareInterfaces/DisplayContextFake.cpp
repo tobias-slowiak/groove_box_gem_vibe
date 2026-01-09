@@ -2,11 +2,11 @@
 #include <vector>
 #include <string>
 #include <cassert>
-//compile
 
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/DisplayContextFake.h"
 
+/*
 void DisplayContextFake::setLines(int displayNumber, int lineNumber, std::string line0, std::string line1 , std::string line2, std::string line3)  {
 	assert(displayNumber >= 0 && lines.size() > static_cast<size_t>(displayNumber));
 	auto& displayLines = lines.at(displayNumber);
@@ -26,6 +26,7 @@ void DisplayContextFake::setLines(int displayNumber, int lineNumber, std::string
 	}
 	this->renderDisplay();
 }
+*/
 
 void DisplayContextFake::setLines(std::vector<std::vector<std::string>> lines){
 	this->lines = lines;

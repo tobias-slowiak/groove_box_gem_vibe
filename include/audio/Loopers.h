@@ -2,7 +2,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
-
+//compile
 #include "../general/ResourceManager.h"
 //I had a version where the loopers were not stored in one big buffer and then I needed a thread to initialize the looper with the big vector, the function doing this is also in midi_keyboard_6_16_25
 
@@ -30,6 +30,8 @@ public:
 	bool isPlaying(){return playing;}
 	
 	void processBlockwise(std::vector<float>& blockFrames);
+
+	float process() {return 0.0f;}
 
 	bool toggleRecord();
 	
@@ -75,6 +77,8 @@ public:
 	}
 
 	void processBlockwise(std::vector<float>& blockFrames);
+
+	float process() {return 0.0f;}
 	
 	bool isRecording();
 	
@@ -93,6 +97,7 @@ public:
 	}
 	
 private:
+	ResourceManager& resourceManager;
 	int blockSize;
 	size_t bufferWriteIndex = 0;
 	std::vector<float> bigLooperBuffer;

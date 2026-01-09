@@ -2,9 +2,11 @@
 
 #include <vector>
 #include <string>
-#include <map>
-
+#include <unordered_map>
+#include "../audio/Mixer.h"
+//compiel
 class ResourceManager;
+
 
 #define BELA_INTERFACE_V1
 #define LAUNCHKEY_46_MK1
@@ -17,9 +19,10 @@ class DeviceMap{
 public:
 	DeviceMap(ResourceManager& resourceManager);
 	
-	int inputGainPin;
-	int metVolumePin;
-	int totalVolumePin;
+	std::unordered_map<int, GainId> pottiPinToGainId;
+	int midiInstrumentChannel = 0;
+	int midiDrumChannel = 1;
+	int midiLoooperChannel = 9;
 	int numberOfButtons;
 	int numberOfRotEncs;
 	std::vector<std::vector<int>> rotEncPins;
@@ -28,11 +31,11 @@ public:
 	int buttonUp;
 	int buttonLeft;
 	int buttonRight;
-	int buttonZERO; //TODO: THIS doesnt seem to get updated. try again later/see controller.cpp
-	int buttonONE;
-	int buttonTWO;
-	int buttonTHREE;
-	int buttonFOUR;
+	int buttonMasterPlay;
+	int buttonMasterRecord;
+	int buttonKeyDrumToggle;
+	int buttonMicToggle;
+	int buttonMetronomeState;
 	int buttonFIVE;
 	int numberOfPotentiometers;
 	bool reversePottis;
@@ -50,14 +53,14 @@ public:
 	int LED_RED;
 	int LED_OFF;
 
-	std::map<int,int> volumeControlToLooper;
+	std::unordered_map<int,int> volumeControlToLooper;
 	
-	std::map<int,int> playControlToLooper;
+	std::unordered_map<int,int> playControlToLooperId;
 	
-	std::map<int,int> looperToPlayControl;
+	std::unordered_map<int,int> looperToPlayControl;
 	
-	std::map<int,int> recControlToLooper;
+	std::unordered_map<int,int> recControlToLooperId;
 	
-	std::map<int,int> looperToRecControl;
+	std::unordered_map<int,int> looperToRecControl;
 	
 };

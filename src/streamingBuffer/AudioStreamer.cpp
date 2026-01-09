@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include "../../include/general/BasicUtilities.h"
-//compile
+
 AudioStreamer::AudioStreamer(StreamingBuffer& streamingBuffer)
         : parent(streamingBuffer),
         streamTaskName(parent.bufferName + "_STask"),

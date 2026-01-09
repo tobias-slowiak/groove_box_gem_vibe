@@ -81,6 +81,9 @@ Notes:
 - debug prints on auxiliary tasks make the debugging more confusing because timing is irgendwos
 */
 
+/*
+General question: on the bela interface why did i not make 2 mono out instead of 1 stereo out?
+*/
 static ResourceManager resourceManager;
 
 

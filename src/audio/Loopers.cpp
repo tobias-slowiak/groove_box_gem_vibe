@@ -1,7 +1,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
-
+//compiel
 #include "../../include/audio/Loopers.h"
 #include "../../include/general/ResourceManager.h"
 
@@ -71,7 +71,8 @@ bool Looper::togglePlay() {
 
 
 
-Loopers::Loopers(ResourceManager& resourceManager){
+Loopers::Loopers(ResourceManager& resourceManager):
+	resourceManager(resourceManager){
 	blockSize = resourceManager.audioFramesPerBlock;
 	bigLooperBuffer = std::vector<float>(TOTAL_BUFFER_FRAMES, 0.0f);
 	numberOfLoopers = 8; //TODO make this come from deviceMap

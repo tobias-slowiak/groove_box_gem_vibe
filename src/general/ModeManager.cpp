@@ -1,6 +1,6 @@
 #include <Bela.h>
 #include <cassert>
-
+//compiel
 #include "../../include/general/ModeManager.h"
 #include "../../include/general/ResourceManager.h"
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
@@ -17,19 +17,19 @@ ModeManager::ModeManager(ResourceManager& resourceManager): resourceManager(reso
 	testAll = false;
 	currentTestDone = false;
 	modeNames  = {
-						"TopMenu",
-						"Normal",
-						"AllTest",
-						"BelaInterfaceTest",
-						"DisplayContextTest",
-						"VoicesTest",
-						"LoopersTest",
-						"SamplersTest",
-						"MidiTest",
-						"ControllerTest",
-						"SamplePackTest",
-						"StreamingBandwidthTest"
-					};
+					"TopMenu",
+					"Normal",
+					"AllTest",
+					"BelaInterfaceTest",
+					"DisplayContextTest",
+					"VoicesTest",
+					"LoopersTest",
+					"SamplersTest",
+					"MidiTest",
+					"ControllerTest",
+					"SamplePackTest",
+					"StreamingBandwidthTest"
+				};
 }
 
 void ModeManager::render(BelaContext *context, ResourceManager& resourceManager){
@@ -53,7 +53,6 @@ void ModeManager::render(BelaContext *context, ResourceManager& resourceManager)
 	}
 	if(currentTestDone){
 		rt_printf("Single Test done. Back to top menu.\n");
-		currentTestDone = false;
 		mode = Mode::TopMenu;
 	}
 	switch(mode) {
@@ -100,6 +99,7 @@ void ModeManager::render(BelaContext *context, ResourceManager& resourceManager)
 }
 
 void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceManager){
+
 	static size_t blocksElapsed = 0;
 	blocksElapsed++;
 	
@@ -114,7 +114,12 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 	static Mode selectionMode = Mode::TopMenu;
 	
 	if(blocksElapsed == 1){
-		display.setLines(0, 0, "Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue");
+		display.setLines({{"Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue"},{"modemngr"}});
+	}
+	if(currentTestDone){
+		display.setLines({{"Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue"},{"modemngr"}});
+
+		currentTestDone = false;
 	}
 	while(interface->numAvailableMessages() > 0){
 		InterfaceMessage msg = interface->getNextInterfaceMessage();
@@ -127,6 +132,8 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 			if(event == RotaryEncoderEvent::Right) modeShift(1,&selectionMode);
 			if(event == RotaryEncoderEvent::Push){
 				mode = selectionMode;
+				printf("set mode to %d\n", static_cast<int>(mode));
+				
 				if(mode == Mode::AllTest){
 					testAll = true;
 					mode = Mode::BelaInterfaceTest;
@@ -136,7 +143,7 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 					rt_printf("Running Test %s\n\n", modeNames.at(modeIndex).c_str());
 				}
 			}
-			display.setLines(0, 0, "Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue");
+			display.setLines({{"Run Mode", modeNames.at(static_cast<int>(selectionMode)).c_str(), "push to ", "continue"},{"modemngr"}});
 		}
 	}
 

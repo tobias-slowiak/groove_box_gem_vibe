@@ -8,13 +8,14 @@
 #include <cerrno>  
 #include <stdio.h>
 #include <cassert>
-
+//compiel
 #include "../../include/general/ResourceManager.h"
 #include "../../include/streamingBuffer/StreamingBuffer.h"
 #include "../../include/general/ModeManager.h"
 #include "../../include/hardwareInterfaces/DeviceMap.h"
 #include "../../include/hardwareInterfaces/BelaInterface.h"
 #include "../../include/ui/Controller.h"
+#include "../../include/ui/UI.h"
 #include "../../include/audio/Voices.h"
 #include "../../include/audio/Samplers.h"
 #include "../../include/audio/Loopers.h"
@@ -68,8 +69,8 @@ void ResourceManager::setup(BelaContext* context){
 	if(interfaceConnected){
 		printf("Interface Connected\n");
 		interface = new BelaInterface(*this);
-		std::vector<U8G2*> u8g2s = initU8G2s();
-	    displayContext.reset(new DisplayContextReal(*this, u8g2s));
+		std::vector<U8G2*> u8g2s = initU8G2s(NUM_LINES_PER_DISPLAY);
+	    displayContext.reset(new DisplayContextReal(*this, u8g2s, NUM_LINES_PER_DISPLAY));
 	    displayContext->initDisplayContext();
 	} else {
 		printf("Interface not Connected\n");
@@ -109,10 +110,14 @@ void ResourceManager::setup(BelaContext* context){
 	blocksPerSecond = audioFramesPerSecond / audioFramesPerBlock;
 	
 	//Classes
+	frames.resize((int)GainId::COUNT);
 	voices.reset(new Voices(*this));
+	mixer.reset(new Mixer());
 	printf("Constructed Vocies\n");
 	keyInstrumentSamplePack.reset(new SamplePack(*this, voices.get(), "keyInstrument", instrumentCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
 	printf("Constructed keyInstrumentSamplePack\n");
+	drumSamplePack.reset(new SamplePack(*this, voices.get(), "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	printf("Constructed drumSamplePack\n");
 	keyInstrumentSamplePack->printBufferInfo();
 	samplers.reset(new Samplers(*this));
 	printf("Constructed Samplers\n");
@@ -121,6 +126,10 @@ void ResourceManager::setup(BelaContext* context){
 
 	modeManager.reset(new ModeManager(*this));
 	controller.reset(new Controller(*this));
+	ui.reset(new UI(*this));
+	printf("Constructed UI\n");
+	inputHandler.reset(new InputHandler(*this));
+	printf("Constructed InputHandler\n");
 	
 
 	this->makeTestSample();
@@ -207,6 +216,20 @@ Controller& ResourceManager::getController(){
 	}
 }
 
+InstrumentCatalog& ResourceManager::getInstrumentCatalog(){
+	return instrumentCatalog;
+}
+DrumCatalog& ResourceManager::getDrumCatalog(){
+	return drumCatalog;
+}
+Mixer& ResourceManager::getMixer(){
+	return *mixer;
+}
+
+UI& ResourceManager::getUI(){
+	return *ui;
+}
+
 BelaInterface* ResourceManager::getBelaInterface(){
 	assert(interface != nullptr);
 	return interface;
@@ -236,6 +259,14 @@ SamplePack& ResourceManager::getKeyInstrumentSamplePack(){
 	else {
 		rt_printf("ERROR: trying getKeyInstrumentSamplePack(), but that is nullptr\n");
 		throw std::runtime_error("getKeyInstrumentSamplePack() failed: is nullptr");
+	}
+}
+SamplePack& ResourceManager::getDrumSamplePack(){
+	if (this->drumSamplePack)
+		return *this->drumSamplePack;
+	else {
+		rt_printf("ERROR: trying getDrumSamplePack(), but that is nullptr\n");
+		throw std::runtime_error("getDrumSamplePack() failed: is nullptr");
 	}
 }
 

@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <math.h>
 #include <cassert>
-//test...
+
 #include "../../include/hardwareInterfaces/IMidi.h"
 #include "../../include/hardwareInterfaces/MidiReal.h"
 #include "../../include/hardwareInterfaces/MidiFake.h"
@@ -76,18 +76,18 @@ void Controller::processBlockwise(){
 				this->stateSwitch(+1);
 			}
 			switch(state){
-				case UIState::General:
+				case UIStateOLD::General:
 					DEBUG_RT_PRINTF("Button %d ignored in General state\n", buttonNumber);
 					break;
-				case UIState::Instrument:
+				case UIStateOLD::Instrument:
 					DEBUG_RT_PRINTF("Button %d handled in Instrument state\n", buttonNumber);
 					break;
-				case UIState::Sampler:
+				case UIStateOLD::Sampler:
 					if(buttonNumber == deviceMap->buttonLeft) autoSliceNumber--;
 					if(buttonNumber == deviceMap->buttonRight) autoSliceNumber++;
-					if(buttonNumber == deviceMap->buttonZERO) rt_printf("TODO: autoSlice the current sample\n");
+					//if(buttonNumber == deviceMap->buttonZERO) rt_printf("TODO: autoSlice the current sample\n");
 					break;
-				case UIState::COUNT:
+				case UIStateOLD::COUNT:
 					break;
 			}
 			} else if(iMessage.type == InterfaceMessageType::ButtonPressedHold){
@@ -108,9 +108,9 @@ void Controller::processBlockwise(){
 				                static_cast<int>(event),
 				                static_cast<int>(state));
  			switch(state){
-				case UIState::General:
+				case UIStateOLD::General:
 					break;
-				case UIState::Instrument:
+				case UIStateOLD::Instrument:
 					if(rotEncNumber == 0){
 						if(event == RotaryEncoderEvent::Left){
 							currentInstrumentIndex--; //TODO: make this go around
@@ -127,7 +127,7 @@ void Controller::processBlockwise(){
 						}
 					}
 					break;
-				case UIState::Sampler:
+				case UIStateOLD::Sampler:
 					if(rotEncNumber == 0){
 						if(event == RotaryEncoderEvent::Left) currentSamplerIndex--; //TODO: make this go around
 						if(event == RotaryEncoderEvent::Right) currentSamplerIndex++;
@@ -138,7 +138,7 @@ void Controller::processBlockwise(){
 						if(event == RotaryEncoderEvent::Push) rt_printf("TODO: make new Slice\n");
 					}
 					break;
-				case UIState::COUNT:
+				case UIStateOLD::COUNT:
 					break;
 			}
 		}
@@ -202,16 +202,16 @@ float Controller::process(float inFrame){
 
 void Controller::stateSwitch(int indexShift){
 	if(indexShift != 1 && indexShift != -1) throw std::runtime_error("stateSwitch() used with indexshift unequal 1 or -1");
-	int stateIndex = ((int)state + indexShift) % (int)UIState::COUNT;
-	if(stateIndex < 0) stateIndex += (int)UIState::COUNT;
-	if(stateIndex == (int)UIState::COUNT) stateIndex += indexShift;
+	int stateIndex = ((int)state + indexShift) % (int)UIStateOLD::COUNT;
+	if(stateIndex < 0) stateIndex += (int)UIStateOLD::COUNT;
+	if(stateIndex == (int)UIStateOLD::COUNT) stateIndex += indexShift;
 	DEBUG_RT_PRINTF("State switch %d -> %d\n", static_cast<int>(state), stateIndex);
-	state = (UIState)(stateIndex);
+	state = (UIStateOLD)(stateIndex);
 }
 
 void Controller::setDisplay(){
 	assert(displayContext != nullptr);
-	//by default UIState::General display
+	//by default UIStateOLD::General display
 	std::vector<std::vector<std::string>> lines= {{"bpm: " + std::to_string(bpm),
 					  "inst: " + currentInstrumentString,
 					  "",
@@ -222,9 +222,9 @@ void Controller::setDisplay(){
 					  "",
 					  ""}};
 	switch(state){
-		case UIState::General:
+		case UIStateOLD::General:
 			break;
-		case UIState::Instrument:
+		case UIStateOLD::Instrument:
 			lines = {{"inst: " + currentInstrumentString,
 					  ": " ,
 					  "",
@@ -235,7 +235,7 @@ void Controller::setDisplay(){
 					  "",
 					  ""}};
 			break;
-		case UIState::Sampler:
+		case UIStateOLD::Sampler:
 			lines = {{"smplr: " + std::to_string(currentSamplerIndex),
 					  "NrSamplers: " + std::to_string(2), //TODO: implement getNrSamplers in Samplers class
 					  "push for new",
@@ -246,13 +246,13 @@ void Controller::setDisplay(){
 					  "push for new" ,
 					  "0: auto: " + std::to_string(autoSliceNumber)}};
 			break;
-		case UIState::COUNT:
+		case UIStateOLD::COUNT:
 			lines = {{"error: ",
 					  "setDisplay()",
 					  "should ",
 					  "not reach "},
 					  
-					 {"UIState:: ", //TODO: make this real
+					 {"UIStateOLD:: ", //TODO: make this real
 					  "COUNT" ,
 					  "",
 					  ""}};

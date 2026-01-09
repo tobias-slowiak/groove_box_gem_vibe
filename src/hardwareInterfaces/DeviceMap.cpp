@@ -1,5 +1,6 @@
 #include <string>
 #include <map>
+//compiel
 
 #include "../../include/hardwareInterfaces/DeviceMap.h"
 #include "../../include/general/ResourceManager.h"
@@ -18,9 +19,13 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 	
 	
 	#ifdef BELA_INTERFACE_V1
-		inputGainPin = 2;
-		metVolumePin = 1;
-		totalVolumePin = 0;
+		pottiPinToGainId = {
+		    {0, GainId::Master},
+		    {1, GainId::Instrument},
+		    {2, GainId::Metronome},
+		    {3, GainId::InputL},
+		    {4, GainId::InputR}
+		};
 		numberOfButtons = 16;
 		numberOfRotEncs = 2;
 		rotEncPins = {{12,15,14},{6,10,7}};
@@ -29,11 +34,11 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		buttonUp = 8;
 		buttonLeft = 11;
 		buttonRight = 13;
-		buttonZERO = 0; 
-		buttonONE = 1;
-		buttonTWO = 2;
-		buttonTHREE = 3;
-		buttonFOUR = 4;
+		buttonMasterPlay = 0; 
+		buttonMasterRecord = 1;
+		buttonKeyDrumToggle = 2;
+		buttonMicToggle = 3;
+		buttonMetronomeState = 4;
 		buttonFIVE = 5;
 		numberOfPotentiometers = 8;
 		reversePottis = true;
@@ -66,7 +71,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		    {28, 7}
 		};
 		
-		playControlToLooper = {
+		playControlToLooperId = {
 		    {96, 0},
 		    {97, 1},
 		    {98, 2},
@@ -87,7 +92,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		    {7,103}
 		};
 		
-		recControlToLooper = {
+		recControlToLooperId = {
 		    {112, 0},
 		    {113, 1},
 		    {114, 2},

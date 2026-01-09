@@ -1,7 +1,7 @@
 #include "../../include/streamingBuffer/WavWriter.h"
 #include "../../include/general/ResourceManager.h"
 #include <algorithm>
-
+//compiel
 
 WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager, sf_count_t totalFrames) {
     info.samplerate = resourceManager.audioFramesPerSecond;

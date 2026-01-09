@@ -30,6 +30,7 @@ $Target = "run"
 $LocalRender = Join-Path $LocalRoot "render.cpp"
 $LocalInclude = Join-Path $LocalRoot "include"
 $LocalSrc = Join-Path $LocalRoot "src"
+$LocalU8g2 = Join-Path $LocalRoot "u8g2"
 $StateFile = Join-Path $PSScriptRoot ".deploy_state.txt"
 
 function Ensure-Tool($Name) {
@@ -80,6 +81,7 @@ Ensure-Tool "scp"
 if (-not (Test-Path $LocalRender -PathType Leaf)) { throw "Missing file: $LocalRender" }
 if (-not (Test-Path $LocalInclude -PathType Container)) { throw "Missing directory: $LocalInclude" }
 if (-not (Test-Path $LocalSrc -PathType Container)) { throw "Missing directory: $LocalSrc" }
+if (-not (Test-Path $LocalU8g2 -PathType Container)) { throw "Missing directory: $LocalU8g2" }
 
 ${remoteUserHost} = "root@${BelaIp}"
 $createdRemoteDirs = [System.Collections.Generic.HashSet[string]]::new()
@@ -134,7 +136,7 @@ Invoke-Ssh "systemctl daemon-reload"
 
 Sync-BelaClock
 
-Invoke-Ssh "mkdir -p '$RemoteFolder' '$RemoteFolder/include' '$RemoteFolder/src'"
+Invoke-Ssh "mkdir -p '$RemoteFolder' '$RemoteFolder/include' '$RemoteFolder/src' '$RemoteFolder/u8g2'"
 
 if ($Rebuild) {
     $confirm1 = (Read-Host "are you sure you want to rebuild").Trim().ToLowerInvariant()
@@ -193,6 +195,16 @@ Get-ChildItem -LiteralPath $LocalSrc -File -Recurse | ForEach-Object {
         Key = "src/$normalized"
         LocalPath = $_.FullName
         RemotePath = "$RemoteFolder/src/$normalized"
+    }
+}
+
+Get-ChildItem -LiteralPath $LocalU8g2 -File -Recurse | ForEach-Object {
+    $relative = Get-RelativePath $LocalU8g2 $_.FullName
+    $normalized = ($relative -replace '\\','/')
+    $entries += [pscustomobject]@{
+        Key = "u8g2/$normalized"
+        LocalPath = $_.FullName
+        RemotePath = "$RemoteFolder/u8g2/$normalized"
     }
 }
 

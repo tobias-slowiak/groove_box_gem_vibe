@@ -1,5 +1,4 @@
 #pragma once
-//compile
 #include <vector>
 #include <math.h>
 #include <cassert>

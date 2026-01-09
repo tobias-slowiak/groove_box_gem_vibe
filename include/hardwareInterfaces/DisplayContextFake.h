@@ -6,7 +6,7 @@
 #include<stdexcept>
 #include<atomic>
 #include <cassert>
-
+//compiel
 #include "IDisplayContext.h"
 
 class DisplayContextFake: public IDisplayContext {
@@ -18,10 +18,12 @@ public:
     void processBlockwise() override {
     	//nothing to be done, 
     }
-	
-	void setLines(int displayNumber, int lineNumber, std::string line0, std::string line1 = "", std::string line2 = "", std::string line3 = "") override;
-	
+		
 	void setLines(std::vector<std::vector<std::string>>lines) override;
+
+	void setLines(std::vector<std::vector<std::string>> lines, std::vector<std::vector<TextFrame>> TextFrames) override {
+		this->setLines(lines);
+	}
 
 	std::string getLine(int displayNumber, int lineNumber) override {
 		assert(displayNumber >= 0 && lines.size() > static_cast<size_t>(displayNumber));
