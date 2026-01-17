@@ -11,11 +11,13 @@ ElementProxy& ElementProxy::operator=(float value){
     }
     assert(iterator.data != nullptr && "ElementProxy::operator= data null");
     if(value == END_OF_SAMPLE){
-        //TODO set sample length here if not set yet
-        if(*(iterator.data) != END_OF_SAMPLE){
-            throw std::runtime_error("ElementProxy::operator= write iterator tries to change length of sample -> initializeSample before!\n");
+        iterator.sampleLength = iterator.parent.getSampleLength(iterator.sampleIdentifier);
+        printf("Writing END_OF_SAMPLE at index %zu of sample %d_%d with length %zu\n", iterator.index, iterator.sampleIdentifier.first, iterator.sampleIdentifier.second, iterator.sampleLength);
+        if(iterator.sampleLength != iterator.index){
+            std::string errMsg = "END_OF_SAMPLE can only be written at the end of the sample. Current index: " + std::to_string(iterator.index) + ", sample length: " + std::to_string(iterator.sampleLength);
+            throw std::runtime_error(errMsg);
         }
-        iterator.release();
+        iterator.markChunkAsReady(); //mark last chunk as ready
     }
     *(iterator.data) = value;
     return *this;
@@ -63,10 +65,24 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
     }
     index++;
     if(index >= sampleLength){
-        ++data;
-        if(sampleLength % parent.chunkLength != 0)
-            assert(*data == END_OF_SAMPLE);
-        this->release();
+        if(sampleLength % parent.chunkLength != 0){
+            data++;
+            if(*data != END_OF_SAMPLE){
+                float second_last = *(--data);
+                float last = *(++data);
+                float after_last = 0.0f;
+                assert(++data != nullptr);
+                after_last = *data;
+                std::string errMsg = "iterator at end of sample but entry is not END_OF_SAMPLE, last entries are: (middle one should be ENDOFSAMLE): ["
+                                    + std::to_string(second_last) + ", " + std::to_string(last) + ", " + std::to_string(after_last)
+                                    + "] for sample " + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second)
+                                    + " with info: index: " + std::to_string(index) + ", sampleLength: " + std::to_string(sampleLength);
+                throw std::runtime_error(errMsg);
+            }
+        }
+        if(type == SBIType::Read){
+            this->release(); //TODO: do i really always want to release on end of sample for read iterators?
+        }
         return *this;
     }
     indexInChunk++;
@@ -75,7 +91,6 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
         indexInChunk = 0;
         ChunkState& oldChunkState = VEC_AT(parent.chunkStates, chunkIndexInBuffer);
         chunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, chunkIndex);
-        ChunkState& chunkState = VEC_AT(parent.chunkStates, chunkIndexInBuffer);
 
         if(type == SBIType::Read){
             if(chunkIndex + streamingAdvanceInChunks <= sampleLength / parent.chunkLength){
@@ -84,6 +99,7 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
                     parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + streamingAdvanceInChunks, *chunkIndicesInBuffer);
             }
             if(chunkIndexInBuffer == CHUNK_INVALID) throw std::runtime_error("apparently the stream chunk message was never sent");
+            ChunkState& chunkState = VEC_AT(parent.chunkStates, chunkIndexInBuffer);
             if(!chunkState.chunkReady.load(std::memory_order_acquire)) throw std::runtime_error("stream too slow for "+ std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + " and chunk " + std::to_string(chunkIndex)+ " with total number of chunks " + std::to_string(std::ceil((float)sampleLength / parent.chunkLength)));
         }
         if(type == SBIType::Write){
@@ -142,6 +158,27 @@ void StreamingBufferIterator::initialize(){
     this->data = nullptr;
 }
 
+void StreamingBufferIterator::flush(){
+    parent.flushSample(sampleIdentifier);
+}
+
 void StreamingBufferIterator::release(){
     parent.releaseIterator(*this);
+}
+
+void StreamingBufferIterator::rewind(){
+    if(sampleIdentifier.first == ITERATOR_INVALID){
+        throw std::runtime_error("using rewind on invalid iterator");
+    }
+    index = 0;
+    chunkIndex = 0;
+    indexInChunk = 0;
+    chunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, 0);
+    chunkStartPtr = VEC_AT(parent.chunks, chunkIndexInBuffer).data();
+    data = chunkStartPtr;
+}
+
+void StreamingBufferIterator::markChunkAsReady(){
+    ChunkState& oldChunkState = VEC_AT(parent.chunkStates, chunkIndexInBuffer);
+    oldChunkState.chunkReady.store(true, std::memory_order_release); 
 }

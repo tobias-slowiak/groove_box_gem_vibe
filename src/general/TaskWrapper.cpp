@@ -20,8 +20,10 @@ template<typename MsgType>
 bool TaskMessageQueue<MsgType>::push(MsgType msg){
     size_t currentHead = head.load(std::memory_order_relaxed);
     size_t nextHead = (currentHead + 1) % capacity;
-    if(nextHead == tail.load(std::memory_order_acquire)){
-        throw std::runtime_error("TaskMessageQueue::push queue full, investigate! name="+name);
+    size_t currentTail = tail.load(std::memory_order_acquire);
+    if(nextHead == currentTail){
+        throw std::runtime_error("TaskMessageQueue::push queue full, investigate! name="+name+"with capacity="+std::to_string(capacity)
+        +" head="+std::to_string(currentHead)+" nextHead="+std::to_string(nextHead)+" tail="+std::to_string(currentTail));
         return false;
     }
     assert(messages.size() > currentHead && "TaskMessageQueue::push currentHead out of range");

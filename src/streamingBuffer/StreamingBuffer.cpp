@@ -118,16 +118,23 @@ StreamingBufferIterator& StreamingBuffer::begin(SampleIdentifier sampleIdentifie
             break;
         }
         if(i == totalNumberOfIterators - 1){
-            throw std::runtime_error("StreamingBuffer::begin: no free iterator slots available.\n");
+            std::string errMsg = "StreamingBuffer::begin: no free iterator slots available for sample ";
+            errMsg += std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second);
+            errMsg += ".\n";
+            errMsg += "Currently used iterators:\n";
+            for(const StreamingBufferIterator& it : iterators){
+                errMsg += "  Sample " + std::to_string(it.sampleIdentifier.first) + "_" + std::to_string(it.sampleIdentifier.second) + "\n";
+            }
+            throw std::runtime_error(errMsg);
         }
     }
 
     //see if first chunk is valid
     int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, 0);
-    assert(chunkIndexInBuffer > 0 && chunkIndexInBuffer < totalNumberOfChunks);
-    ChunkState& chunkState = VEC_AT(chunkStates, chunkIndexInBuffer);
     if(type == SBIType::Read){
+        assert(chunkIndexInBuffer > 0 && chunkIndexInBuffer < totalNumberOfChunks);
         if(chunkIndexInBuffer == CHUNK_INVALID) throw std::runtime_error("apparently the stream chunk message was never sent");
+        ChunkState& chunkState = VEC_AT(chunkStates, chunkIndexInBuffer);
         if(!chunkState.chunkReady.load(std::memory_order_acquire)) throw std::runtime_error("first chunk should always be ready for read iterator");
     }
     if(type == SBIType::Write){
@@ -139,7 +146,6 @@ StreamingBufferIterator& StreamingBuffer::begin(SampleIdentifier sampleIdentifie
     int streamingAdvanceInChunks = std::ceil(playbackRate) * DEFAULT_STREAMING_ADVANCE_IN_CHUNKS;
     StreamingBufferIterator& sbi = VEC_AT(iterators, StreamingBufferIteratorAssignIndex);
     sbi.set(sampleIdentifier, &chunkIndicesInBuffer, type, streamingAdvanceInChunks);
-
     return sbi;
 }
 
@@ -173,6 +179,11 @@ int StreamingBuffer::sampleInUse(SampleIdentifier sampleIdentifier){
     return NOT_IN_USE;
 }
 
+void StreamingBuffer::flushSample(SampleIdentifier sampleIdentifier){
+    audioStreamer.sendFlushChunksMessages(sampleIdentifier);
+    audioStreamer.flushTask.taskCheckAndWorkMessages();
+}
+
 void StreamingBuffer::releaseIterator(StreamingBufferIterator& iterator){
     auto it = std::find_if(iterators.begin(), iterators.end(),
         [&iterator](const StreamingBufferIterator& elem) {
@@ -182,9 +193,6 @@ void StreamingBuffer::releaseIterator(StreamingBufferIterator& iterator){
         throw std::runtime_error("StreamingBuffer::releaseIterator: iterator not found in iterators vector\n");
     }
     StreamingBufferIterator& itRef = *it;
-    if(itRef.type == SBIType::Write){
-        audioStreamer.sendFlushChunksMessages(itRef.sampleIdentifier);
-    }
     SampleIdentifier oldSampleIdentifier = itRef.sampleIdentifier;
     itRef.initialize();
     if(!sampleInUse(oldSampleIdentifier)) unProtectSample(oldSampleIdentifier);
@@ -237,7 +245,7 @@ void StreamingBuffer::sendInitializeSamplesMessages(std::unordered_map<SampleIde
     }
 }
 
-void StreamingBuffer::sendInitializeSampleMessage(SampleIdentifier sampleIdentifier, size_t expectedSampleLengthInFrames){
+void StreamingBuffer::sendInitializeSampleMessage(SampleIdentifier sampleIdentifier, size_t expectedSampleLengthInFrames){  
     assert(expectedSampleLengthInFrames > 0 && "StreamingBuffer::initializeSample expectedSampleLengthInFrames must be > 0");
     int numberOfChunks = static_cast<int>(expectedSampleLengthInFrames / chunkLength) + 1;
     StreamingMessage outMsg{StreamingMessageType::InitializeSample, sampleIdentifier, numberOfChunks, ARBITRARY_VALUE};
@@ -263,6 +271,14 @@ void StreamingBuffer::initializeForNewSamplePack(std::unordered_map<SampleIdenti
     task_sleep_ns(1e8);
     sendStreamStartsMessages();
     audioStreamer.streamTask.taskCheckAndWorkMessages();
+}
+
+void StreamingBuffer::initializeForLoopers(std::unordered_map<SampleIdentifier, size_t>& availableLoopers){
+    sendInitializeSamplesMessages(availableLoopers);
+    mutateDataTask.pushMessage(TaskMessageTarget::TaskThread, {StreamingMessageType::releaseMutateOngoing, {ARBITRARY_VALUE,ARBITRARY_VALUE}, ARBITRARY_VALUE, ARBITRARY_VALUE});
+    mutateDataTask.taskCheckAndWorkMessages();
+    //TODO for the future. experiment around with that waittime. is it necessary and how much?
+    task_sleep_ns(1e8);
 }
 
 void StreamingBuffer::printInfo(){
@@ -346,11 +362,15 @@ size_t StreamingBuffer::getSampleLength(SampleIdentifier sampleIdentifier){
 std::vector<int>& StreamingBuffer::getChunkIndicesInBuffer(SampleIdentifier sampleIdentifier){
     auto mapIt = chunkIndicesInBufferMap.find(sampleIdentifier);
     if(mapIt == chunkIndicesInBufferMap.end()){
-        throw std::runtime_error(" StreamingBuffer::getChunkIndicesInBuffer: chunkIndicesInBufferMap missing sample");
+        std::string errMsg = " StreamingBuffer::getChunkIndicesInBuffer: chunkIndicesInBufferMap missing sample for key: ";
+        errMsg += std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second);   
+        throw std::runtime_error(errMsg);
     }
     std::vector<int>& chunkIndicesInBuffer = mapIt->second;
     if(chunkIndicesInBuffer.size() <= 0){
-        throw std::runtime_error(" StreamingBuffer::getChunkIndicesInBuffer: chunkIndicesInBuffer length is <=0");
+        std::string errMsg = " StreamingBuffer::getChunkIndicesInBuffer: chunkIndicesInBuffer length is <=0 for key: ";
+        errMsg += std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second);
+        throw std::runtime_error(errMsg);
     }
     return chunkIndicesInBuffer;
 }

@@ -184,16 +184,6 @@ void UI::drumKeySwitch(){
 	//TODO
 }
 
-void UI::metronomeStateSwitch(){
-	//TODO also put the following in metronome:
-	enum class metronomeState {
-		Off,
-		AnalogOut,
-		AnalogAndAudioOut,
-		COUNT
-	};
-}
-
 void UI::micToggle(){
 	//TODO
 }

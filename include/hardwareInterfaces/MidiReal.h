@@ -1,6 +1,7 @@
 #pragma once
 //compiel
 #include <libraries/Midi/Midi.h>
+#include <cassert>
 #include "IMidi.h"
 #include "../general/DebugLog.h"
 
@@ -24,7 +25,7 @@ public:
 	
 	void setType(MidiMessageType type) override {belaMsg->setType(type);}
 	
-	void prettyPrint() override {belaMsg->prettyPrint();}
+	void prettyPrint() override;
 private:
 	MidiChannelMessage* belaMsg;
 };
@@ -71,6 +72,10 @@ public:
 	}
 	
 	IMidiParser* getParser() override {return parser;}
+
+	void writeMessage(midi_byte_t statusCode, midi_byte_t channel, midi_byte_t dataByte1, midi_byte_t dataByte2) override {
+		midi->writeMessage(statusCode, channel, dataByte1, dataByte2);
+	}
 private:
 	Midi* midi;
 	IMidiParser* parser;

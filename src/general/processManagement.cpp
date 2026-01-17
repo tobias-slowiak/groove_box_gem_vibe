@@ -6,7 +6,6 @@
 void ResourceManager::processBlockwise(){
     displayContext->processBlockwise();
     interface->processBlockwise();
-    //controller->processBlockwise();
     inputHandler->parseMessages();
     assert(keyInstrumentSamplePack);
     keyInstrumentSamplePack->processBlockwise();
@@ -16,8 +15,14 @@ void ResourceManager::processBlockwise(){
 
 
 float ResourceManager::getNextFrame(int n){
+    metronome->process();
+
+    //TODO: the following should be done in a AudioRouter class
     VEC_AT(frames, (int)GainId::Instrument) = voices->process();
-    return mixer->mix(frames);
+    //TODO: need a better way to direct different audio sources into mixer inputs and inputs of loopers etc.
+    float newFrame = mixer->mix(frames);
+    float looperFrame = loopers->process(newFrame);
+    return (looperFrame + newFrame) * mixer->getGain(GainId::Master);
 }
 
     /*

@@ -14,7 +14,6 @@
 #include "../../include/hardwareInterfaces/IMidi.h"
 #include "../../include/hardwareInterfaces/MidiReal.h"
 #include "../../include/hardwareInterfaces/MidiFake.h"
-#include "../../include/ui/Controller.h"
 #include "../../include/general/BasicUtilities.h"
 #include "../../include/audio/Loopers.h"
 #include "../../include/audio/Samplers.h"
@@ -256,6 +255,63 @@ void ModeManager::renderSamplersTest(BelaContext *context, ResourceManager& reso
 
 void ModeManager::renderLoopersTest(BelaContext *context, ResourceManager& resourceManager){
 	assert(context != nullptr);
+	Loopers& loopers = resourceManager.getLoopers();
+	static int blocksElapsed = 0;
+	blocksElapsed++;
+	resourceManager.processBlockwise();
+	if(blocksElapsed == 1){
+		resourceManager.getKeyInstrumentSamplePack().triggerVoice(36,1);
+		resourceManager.getMetronome().mainOutonOffToggle();
+		resourceManager.getMetronome().setBPM(60);
+		loopers.looperTriggerModeToggle();
+	}
+	
+	if(secondsElapsed(blocksElapsed, 1)){
+		rt_printf("toggleRecordOn with Free Mode\n");
+		rt_printf("tiggermode: %d\n", static_cast<int>(loopers.getLooperTriggerMode()));
+		loopers.toggleRecord(0);
+	}
+	if(secondsElapsed(blocksElapsed, 2)){
+		rt_printf("toggleRecordOff with Free Mode\n");
+		loopers.toggleRecord(0);
+	}
+	if(secondsElapsed(blocksElapsed, 3)){
+		rt_printf("change trigger mode\n");
+		resourceManager.getKeyInstrumentSamplePack().triggerVoice(39,1);
+		loopers.looperTriggerModeToggle();
+	}
+	//trigger on beat 1
+	int beatOnToggleRec = 1;
+	static bool triggeredOn = false;
+	if(!triggeredOn && blocksElapsed > 4 * resourceManager.audioFramesPerSecond / resourceManager.audioFramesPerBlock){
+		if(beatOnToggleRec == resourceManager.getMetronome().getBeatsElapsed()){
+			triggeredOn = true;
+			rt_printf("toggleRecordOn with OnBar Mode\n");
+			rt_printf("tiggermode: %d\n", static_cast<int>(loopers.getLooperTriggerMode()));
+			loopers.togglePlay(0);
+			loopers.toggleRecord(1);
+		}
+	}
+	static bool triggeredOff = false;
+	if(!triggeredOff && blocksElapsed > 12 * resourceManager.audioFramesPerSecond / resourceManager.audioFramesPerBlock){
+		if(beatOnToggleRec == resourceManager.getMetronome().getBeatsElapsed()){
+			triggeredOff = true;
+			rt_printf("toggleRecordOff with OnBar Mode\n");
+			loopers.toggleRecord(1);
+		}
+	}
+		
+	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
+		float frame = resourceManager.getNextFrame(n);
+		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
+            audioWrite(context, n, ch,  frame);
+        }
+	}
+
+	if(secondsElapsed(blocksElapsed, 30) ){
+		currentTestDone = true;
+		blocksElapsed = 0;
+	}
 }
 
 void ModeManager::renderSamplersTest(BelaContext *context, ResourceManager& resourceManager){

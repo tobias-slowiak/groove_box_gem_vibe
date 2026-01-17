@@ -11,8 +11,12 @@ class WavWriter {
 public:
 
     WavWriter(std::string path, ResourceManager& resourceManager, sf_count_t totalFrames);
+    WavWriter(const WavWriter&) = delete;
+    WavWriter& operator=(const WavWriter&) = delete;
+    WavWriter(WavWriter&& other) noexcept;
+    WavWriter& operator=(WavWriter&& other) noexcept;
 
-    void writeChunk(sf_count_t frameOffset, const std::vector<float>& interleaved);
+    void writeChunk(sf_count_t frameOffset, const std::vector<float>& interleaved, int framesToWrite = -1);
 
     ~WavWriter() { if(f) sf_close(f); }
 

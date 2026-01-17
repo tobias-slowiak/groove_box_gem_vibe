@@ -17,7 +17,8 @@ class IMidi;
 // Include complete types needed for std::unique_ptr members
 #include "ModeManager.h"
 #include "../hardwareInterfaces/DeviceMap.h"
-#include "../ui/Controller.h"
+#include "../hardwareInterfaces/IMidi.h"
+#include "Metronome.h"
 #include "../audio/Voices.h"
 #include "../audio/Samplers.h"
 #include "../audio/Loopers.h"
@@ -26,6 +27,7 @@ class IMidi;
 #include "../audio/InstrumentCatalog.h"
 #include "../ui/UI.h"
 #include "../ui/InputHandler.h"
+#include "../hardwareInterfaces/LooperLights.h"
 
 
 class ResourceManager{
@@ -48,6 +50,8 @@ public:
 	DeviceMap& getDeviceMap();
 	
 	IDisplayContext& getDisplayContext();
+
+	Metronome& getMetronome();
 	
 	Samplers& getSamplers();
 	
@@ -55,8 +59,6 @@ public:
 	
 	Loopers& getLoopers();
 	
-	Controller& getController();
-
 	UI& getUI();
 
 	InstrumentCatalog& getInstrumentCatalog();
@@ -74,6 +76,8 @@ public:
 	SamplePack& getKeyInstrumentSamplePack();
 	
 	SamplePack& getDrumSamplePack();
+
+	LooperLights& getLooperLights();
 	
 	std::vector<float>* makeTestSample();
 	
@@ -91,7 +95,7 @@ public:
 	int blocksPerSecond;
 	float LowerDBLimit = -60.0f;
 	float UpperDBLimit = 20.0f;
-	float UpperLimitInputGain = 20.0;
+	float UpperLimitInputGain = 20.0f;
 	bool inMonoMode = true; //Maybe someday implement stereo
 	bool interfaceConnected = false;
 	bool keyMidiConnected = false;
@@ -108,7 +112,7 @@ private:
 	BelaInterface* interface = nullptr;
 	
 	std::vector<float> frames;
-	std::unique_ptr<Controller> controller;
+	std::unique_ptr<Metronome> metronome;
 	std::unique_ptr<Voices> voices;
 	std::unique_ptr<Samplers> samplers;
 	std::unique_ptr<Loopers> loopers;
@@ -120,6 +124,7 @@ private:
 	std::unique_ptr<Mixer> mixer;
 	std::unique_ptr<UI> ui;
 	std::unique_ptr<InputHandler> inputHandler;
+	std::unique_ptr<LooperLights> looperLights;
 	InstrumentCatalog instrumentCatalog;
 	DrumCatalog drumCatalog;
 	

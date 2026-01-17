@@ -27,11 +27,34 @@ WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager, sf_
     sf_seek(f, 0, SEEK_SET);
 }
 
+WavWriter::WavWriter(WavWriter&& other) noexcept
+    : f(other.f), info(other.info), frames(other.frames) {
+    other.f = nullptr;
+    other.info = SF_INFO{};
+    other.frames = 0;
+}
+
+WavWriter& WavWriter::operator=(WavWriter&& other) noexcept {
+    if(this != &other){
+        if(f) sf_close(f);
+        f = other.f;
+        info = other.info;
+        frames = other.frames;
+        other.f = nullptr;
+        other.info = SF_INFO{};
+        other.frames = 0;
+    }
+    return *this;
+}
+
 // write interleaved chunk starting at frameOffset
-void WavWriter::writeChunk(sf_count_t frameOffset, const std::vector<float>& interleaved) {
-    sf_count_t framesToWrite = interleaved.size() / info.channels;
+void WavWriter::writeChunk(sf_count_t frameOffset, const std::vector<float>& interleaved, int framesToWrite) {
+    if(framesToWrite < 0) {
+        framesToWrite = interleaved.size() / info.channels;
+    }
     if(frameOffset + framesToWrite > frames) throw std::out_of_range("chunk beyond file length");
     if(sf_seek(f, frameOffset, SEEK_SET) < 0) throw std::runtime_error("seek failed");
     sf_count_t written = sf_writef_float(f, interleaved.data(), framesToWrite);
+    printf("WavWriter::writeChunk: wrote %lld where should print %lld frames at offset %lld\n", (long long)written, (long long)framesToWrite, (long long)frameOffset);
     if(written != framesToWrite) throw std::runtime_error("partial write");
 }

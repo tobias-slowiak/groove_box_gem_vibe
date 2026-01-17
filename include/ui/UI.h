@@ -8,6 +8,8 @@ class IMidiChannelMessage;
 #include "../audio/Mixer.h"
 
 class UI;
+class Metronome;
+class Loopers;
 
 struct UIParamLine {
     std::string label; // fixed label text
@@ -44,17 +46,17 @@ struct UIState {
 
 
 struct UIStateContext {
-	UIStateContext(ResourceManager& rm): rm(rm){}
+	UIStateContext(ResourceManager& rm);
 	ResourceManager& rm;
+	Metronome& metronome;
+	Loopers& loopers;
 	ResourceManager& getRM() {return rm;}
 	UIStateId stateId = UIStateId::General;
-	int bpm = 120;
 	int instrumentIndex = 0;
 	int drumIndex = 0;
 	int samplerIndex = 0;
 	int sliceIndex = 0;
 	int numberOfSliceForAutoSlice = 2;
-	bool metronomeOn = false;
 };
 
 enum class stateNavigationEvent {

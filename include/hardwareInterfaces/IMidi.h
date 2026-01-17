@@ -40,4 +40,6 @@ public:
 	virtual void enableParser(bool) = 0;
 	
 	virtual IMidiParser* getParser() = 0;
+
+	virtual void writeMessage(midi_byte_t statusCode, midi_byte_t channel, midi_byte_t dataByte1, midi_byte_t dataByte2) = 0;
 };

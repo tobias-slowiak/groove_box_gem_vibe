@@ -62,7 +62,7 @@ void InputHandler::handleMessage(InterfaceMessage& message){
                 return;
             }
             if(message.id == deviceMap.buttonMetronomeState){
-                ui.metronomeStateSwitch();
+                rm.getMetronome().mainOutonOffToggle();
                 return;
             } 
 			break;
@@ -75,9 +75,8 @@ void InputHandler::handleMessage(InterfaceMessage& message){
                 ui.menuPush(message.id);
 			break;
 		case InterfaceMessageType::PotSignal:
-			if(message.id < (int)GainId::COUNT){
-                GainId gainId = deviceMap.pottiPinToGainId[message.id];
-				ui.setGain(gainId, message.value);
+			if(deviceMap.pottiPinToGainId[message.id] < GainId::COUNT){
+				ui.setGain(deviceMap.pottiPinToGainId[message.id], message.value);
             }
 			break;
 		default:
@@ -94,6 +93,14 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
 			break;
 		case kmmNoteOn:
 			if(message.getChannel() == deviceMap.midiInstrumentChannel){
+				if(message.getDataByte(1) == 0){
+					//some keyboards send note on with velocity 0 instead of note off
+					ui.triggerOff(
+						message.getDataByte(0),
+						rm.keysInMelodicMode
+					);
+					break;
+				}
 				ui.triggerVoice(
 					message.getDataByte(0),
 					message.getDataByte(1),
@@ -101,6 +108,14 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
 				);
 			}
 			if(message.getChannel() == deviceMap.midiDrumChannel){
+				if(message.getDataByte(1) == 0){
+					//some keyboards send note on with velocity 0 instead of note off
+					ui.triggerOff(
+						message.getDataByte(0),
+						false
+					);
+					break;
+				}
 				ui.triggerVoice(
 					message.getDataByte(0),
 					message.getDataByte(1),
@@ -113,10 +128,12 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
                     int looperId = deviceMap.playControlToLooperId[message.getDataByte(0)];
                     ui.looperTogglePlay(looperId);
                 }
+				
                 if(deviceMap.recControlToLooperId.find(message.getDataByte(0)) != deviceMap.recControlToLooperId.end()){
                     int looperId = deviceMap.recControlToLooperId[message.getDataByte(0)];
                     ui.looperToggleRecord(looperId);
                 }
+				rm.getLooperLights().update();
                 //TODO: check if the following really is OK this way
                 //TODO: logarithm to map volume controls to looper ids
                 if(message.getDataByte(0) >= 96 && message.getDataByte(0) <= 103){

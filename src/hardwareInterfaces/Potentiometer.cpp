@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cassert>
 
+
 #include "../../include/general/BasicUtilities.h"
 #include "../../include/hardwareInterfaces/Potentiometer.h"
 #include "../../include/general/DebugLog.h"
@@ -40,7 +41,6 @@ Potentiometer::Potentiometer(BelaContext* context, bool reverse, int pinNumber, 
 
 void Potentiometer::processBlockwise() {
 	if(!context) return;
-
 	float inValue = analogRead(context, 0, pinNumber);
 	float mappedValue = map(inValue, 0.0f, kAnalogMax, 0.0f, 1.0f);
 	if(reverse) mappedValue = 1.0f - mappedValue;
@@ -75,7 +75,7 @@ void Potentiometer::processBlockwise() {
 		if(warmupBlocks > 0){
 			--warmupBlocks;
 			if(warmupBlocks == 0){
-				//DEBUG_RT_PRINTF("Potentiometer %d warmup finished\n", pinNumber);
+				DEBUG_RT_PRINTF("Potentiometer %d warmup finished\n", pinNumber);
 			}
 			return;
 		}

@@ -3,18 +3,19 @@
 #include <stdexcept>
 #include <cassert>
 //compile
-#include "../general/ResourceManager.h"
+#include "../streamingBuffer/StreamingBuffer.h"
 //I had a version where the loopers were not stored in one big buffer and then I needed a thread to initialize the looper with the big vector, the function doing this is also in midi_keyboard_6_16_25
 
 constexpr size_t TOTAL_BUFFER_FRAMES = 44100 * 60 * 2; // 2 minutes of space
 
+class ResourceManager; //forward declaration
+class Loopers;
+class Metronome;
 
 class Looper {
 public:
-	Looper(std::vector<float>& buffer, int blockSize):  blockSize(blockSize), buffer(buffer) {loopLengthInFrames = 0;}
-	
-	void setStart(int startIndexInBuffer){this->startIndexInBuffer = startIndexInBuffer;}
-	
+	Looper(Loopers* parentPtr, int looperIndex):  parentPtr(parentPtr), looperIndex(looperIndex){}
+		
 	void setLoopLengthInFrames(int loopLengthInFrames){this->loopLengthInFrames = loopLengthInFrames;}
 	
 	int getLoopLengthInFrames(){return loopLengthInFrames;}
@@ -28,38 +29,48 @@ public:
 	bool isRecording(){return recording;}
 	
 	bool isPlaying(){return playing;}
-	
-	void processBlockwise(std::vector<float>& blockFrames);
 
-	float process() {return 0.0f;}
+	float process(float inFrame);
 
 	bool toggleRecord();
 	
 	bool togglePlay();
 	
-	//TODO: The erase as it is implemented seems stupid, do differently!!!!!!!!!
-	void eraseLoop(){framesLeftToErase = loopLengthInFrames;}
-	
 private:
-	int blockSize = 16; //TODO: make blocksize come from resourceManager
-	int startIndexInBuffer = -1;
-	std::vector<float>& buffer;
+	friend class Loopers;
+	Loopers* parentPtr;
+	StreamingBufferIterator* iteratorPtr = nullptr;
+	int looperIndex;
 	int position = 0;
 	int loopLengthInFrames = 0;
 	bool playing = false;
 	bool recording = false;
 	int framesLeftToErase = 0;
+	bool setNewLoopLength = false;
+	bool waitingForBarStart = false;
 };
 
+
+enum class LooperTriggerMode {
+	OnBar,
+	Free,
+	COUNT
+};
 
 
 class Loopers{
 public:
 	Loopers(ResourceManager& resourceManager);
 	
-	bool newLooper(int loopLengthInFrames, int looperIndex);
 	
 	int getNrLoopers(){return loopers.size();}
+
+	LooperTriggerMode getLooperTriggerMode(){return looperTriggerMode;}
+	void looperTriggerModeToggle(){
+		int mode = static_cast<int>(looperTriggerMode);
+		mode = (mode + 1) % static_cast<int>(LooperTriggerMode::COUNT);
+		looperTriggerMode = static_cast<LooperTriggerMode>(mode);
+	}
 
 	bool isPlaying(int looperIndex){
 		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
@@ -76,9 +87,7 @@ public:
 		return loopers.at(looperIndex).getProgress();
 	}
 
-	void processBlockwise(std::vector<float>& blockFrames);
-
-	float process() {return 0.0f;}
+	float process(float inFrame);
 	
 	bool isRecording();
 	
@@ -86,21 +95,39 @@ public:
 		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
 		return loopers.at(looperIndex).isRecording();
 	}
+
+	bool isWaitingForBarStart(int looperIndex){
+		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
+		return loopers.at(looperIndex).waitingForBarStart;
+	}
 	
 	bool toggleRecord(int looperIndex);
 	
 	bool togglePlay(int looperIndex);
 	
+	/*
+	NOT READY YET
+
+		bool newLooper(int loopLengthInFrames, int looperIndex);
+
+
 	void eraseLoop(int looperIndex){
 		assert(looperIndex >= 0 && loopers.size() > static_cast<size_t>(looperIndex));
 		loopers.at(looperIndex).eraseLoop();
 	}
+		*/
+
+	//OLD     void processBlockwise(std::vector<float>& blockFrames);
 	
 private:
+	friend class Looper;
 	ResourceManager& resourceManager;
-	int blockSize;
+	Metronome& metronome;
 	size_t bufferWriteIndex = 0;
-	std::vector<float> bigLooperBuffer;
-	std::vector<Looper> loopers;
 	int numberOfLoopers;
+	std::unordered_map<SampleIdentifier, size_t> availableLoopers;
+	StreamingBuffer streamingBuffer;
+	std::vector<Looper> loopers;
+	LooperTriggerMode looperTriggerMode;
+	bool autoplay = true;
 };

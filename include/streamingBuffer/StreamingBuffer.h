@@ -78,9 +78,15 @@ public:
 
     StreamingBufferIterator operator++(int);    // post-increment
 
+    void flush();
+
     void release();
 
+    void rewind();
+
     SampleIdentifier sampleIdentifier;
+
+    void markChunkAsReady();
 
 private:
     StreamingBufferIterator(StreamingBuffer& parent);
@@ -98,6 +104,10 @@ private:
 
     size_t index;
     StreamingBuffer& parent;
+    /*
+    TODO: chunkindicesinbuffer cannot have the exact amount of entries always. it should rather be a large container, that is just filled with
+    CHUNK_INVALID after no more chunks are needed. so the size of it should rather be a maximum possible number of chunks. this should be respected in all
+    the code. I dont know if the old read part has a problem with that.*/
     std::vector<int>* chunkIndicesInBuffer;
     SBIType type = SBIType::None;
     int streamingAdvanceInChunks;
@@ -108,6 +118,7 @@ private:
     float* chunkStartPtr;
     float* data;
 };
+
 
 
 class StreamingBuffer {
@@ -139,11 +150,19 @@ public:
     
     void taskWorkMessage(std::string& taskName, StreamingMessage msg);
 
+    void initializeForNewSamplePack(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
+
+    void initializeForLoopers(std::unordered_map<SampleIdentifier, size_t>& availableLoopers);
+
+    size_t getSampleLength(SampleIdentifier sampleIdentifier);
+
 private:
 
     int sampleInUse(SampleIdentifier sampleIdentifier);
 
     void sendStreamStartsMessages();
+
+    void flushSample(SampleIdentifier sampleIdentifier);
 
     void releaseIterator(StreamingBufferIterator& iterator);
 
@@ -159,13 +178,9 @@ private:
 
     void clear();
 
-    void initializeForNewSamplePack(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
-
     int findFreeChunk();
 
     int assignToFreeChunk(SampleIdentifier sampleIdentifier, int chunkIndex, std::vector<int>& chunkIndicesInBuffer);
-
-    size_t getSampleLength(SampleIdentifier sampleIdentifier);
 
     std::vector<int>& getChunkIndicesInBuffer(SampleIdentifier sampleIdentifier);
 

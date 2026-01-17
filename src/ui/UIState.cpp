@@ -2,24 +2,47 @@
  #include "../../include/general/ResourceManager.h"
  #include <string>
 
+UIStateContext::UIStateContext(ResourceManager& rm): rm(rm), metronome(rm.getMetronome()), loopers(rm.getLoopers()) {}
+
+std::string getLooperTriggerModeString(LooperTriggerMode mode) {
+    switch (mode) {
+        case LooperTriggerMode::OnBar:
+            return "OnBar";
+        case LooperTriggerMode::Free:
+            return "Free";
+        default:
+            return "Unknown";
+    }
+}
+
  UIState::UIState(UI& uiRef, UIStateId stateId)
      : id(stateId)
 {
     switch (id) {
         case UIStateId::General:
             paramLines = {
-                {"Rythm", []{return "";}},
-                {"Instrument", []{return "";}}
+                {"Metronome", []{return "";}},
+                {"Instrument", []{return "";}},
+                {"Looper", []{return "";}}
             };
             subParamLines = {
+                //Metronome submenu
                 {
-                    {"BPM", [&uiRef]() { return std::to_string(uiRef.ctxt.bpm); }},
-                    {"Metronome", [&uiRef]() { return uiRef.ctxt.metronomeOn ? "On" : "Off"; }}
+                    {"MainOut", [&uiRef]() { return uiRef.ctxt.metronome.mainOutIsOn() ? "On" : "Off"; }},
+                    {"AnalogOut", [&uiRef]() { return uiRef.ctxt.metronome.analogOutIsOn() ? "On" : "Off"; }},
+                    {"BPM", [&uiRef]() { return std::to_string(uiRef.ctxt.metronome.getBPM()); }},
+                    {"bp bar", [&uiRef]() { return std::to_string(uiRef.ctxt.metronome.getBeatsPerBar()); }},
+                    {"beatUnit", [&uiRef]() { return std::to_string(uiRef.ctxt.metronome.getBeatUnit()); }}
                 },
+                //Instrument submenu
                 {
                     {"Keys", [&uiRef]() { return uiRef.ctxt.rm.getInstrumentCatalog().getDisplayName(uiRef.ctxt.instrumentIndex); }},
                     {"Drums", [&uiRef]() { return uiRef.ctxt.rm.getDrumCatalog().getDisplayName(uiRef.ctxt.drumIndex); }},
                     {"Active", [&uiRef]() { return uiRef.ctxt.rm.keysInMelodicMode ? "Melodic" : "Drums"; }}
+                },
+                //Looper submenu
+                {
+                    {"TriggerMode", [&uiRef]() { return getLooperTriggerModeString(uiRef.ctxt.loopers.getLooperTriggerMode()); }}
                 }
             };
             manipulators = {
@@ -36,17 +59,35 @@
             };
             subParamManipulators = {
                 {
-                    { //BPM
-                        [&uiRef]() { uiRef.ctxt.bpm += 1; },
-                        [&uiRef]() { uiRef.ctxt.bpm -= 1; },
+                    //Metronome manipulators
+                    { //Toggle Metronome
+                        [&uiRef]() { uiRef.ctxt.metronome.mainOutonOffToggle(); },
+                        [&uiRef]() { uiRef.ctxt.metronome.mainOutonOffToggle(); },
                         []() {}
                     },
-                    { //Toggle Metronome
-                        [&uiRef]() { uiRef.ctxt.metronomeOn = !uiRef.ctxt.metronomeOn; },
-                        [&uiRef]() { uiRef.ctxt.metronomeOn = !uiRef.ctxt.metronomeOn; },
+                    { //Toggle Analog Out
+                        [&uiRef]() { uiRef.ctxt.metronome.analogOutonOffToggle(); },
+                        [&uiRef]() { uiRef.ctxt.metronome.analogOutonOffToggle(); },
+                        []() {}
+                    },
+                    { //BPM
+                        [&uiRef]() { uiRef.ctxt.metronome.setBPM(uiRef.ctxt.metronome.getBPM() + 1); },
+                        [&uiRef]() { uiRef.ctxt.metronome.setBPM(uiRef.ctxt.metronome.getBPM() - 1); },
+                        []() {}
+                    },
+                    
+                    { // Beats per Bar
+                        [&uiRef]() {uiRef.ctxt.metronome.setBeatsPerBar(uiRef.ctxt.metronome.getBeatsPerBar() + 1); },
+                        [&uiRef]() { uiRef.ctxt.metronome.setBeatsPerBar(uiRef.ctxt.metronome.getBeatsPerBar() - 1); },
+                        []() {}
+                    },
+                    { // Beat Unit
+                        [&uiRef]() {uiRef.ctxt.metronome.setBeatUnit(uiRef.ctxt.metronome.getBeatUnit() + 1); },
+                        [&uiRef]() { uiRef.ctxt.metronome.setBeatUnit(uiRef.ctxt.metronome.getBeatUnit() - 1); },
                         []() {}
                     }
                 },
+                //Instrument manipulators
                 {
                     { // Change Instrument
                         [&uiRef]() {
@@ -77,6 +118,14 @@
                     { //Toggle Instrument Drum/Keys
                         [&uiRef]() { uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode; },
                         [&uiRef]() { uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode; },
+                        []() {}
+                    }
+                },
+                //Looper manipulators
+                {
+                    { // Toggle Trigger Mode
+                        [&uiRef]() { uiRef.ctxt.loopers.looperTriggerModeToggle(); },
+                        [&uiRef]() { uiRef.ctxt.loopers.looperTriggerModeToggle(); },
                         []() {}
                     }
                 }

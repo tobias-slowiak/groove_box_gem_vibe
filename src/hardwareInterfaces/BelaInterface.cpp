@@ -101,11 +101,6 @@ void BelaInterface::processBlockwise(){
 	for(auto& potentiometer: potentiometers){
 		potentiometer.processBlockwise();
 		if(potentiometer.hasChanged()){
-			/*
-			DEBUG_RT_PRINTF("Potentiometer %d queued value %.3f\n",
-			                potentiometer.getPin(),
-			                potentiometer.getValue());
-							*/
 			messages.push(InterfaceMessage(InterfaceMessageType::PotSignal, potentiometer.getPin(), potentiometer.getValue()));
 		}
 	}

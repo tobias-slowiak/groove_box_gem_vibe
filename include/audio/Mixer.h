@@ -31,7 +31,8 @@ public:
     }
 
     void setGain(GainId gainId, float value){
-        VEC_AT(gainz, (int)gainId);
+        rt_printf("Setting gain %d to %.3f\n", (int)gainId, value);
+        VEC_AT(gainz, (int)gainId) = value;
     }
 
     float getGain(GainId gainId){

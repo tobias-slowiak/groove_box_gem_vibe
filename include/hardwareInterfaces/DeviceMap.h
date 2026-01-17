@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include "../audio/Mixer.h"
+#include "../hardwareInterfaces/IMidi.h"
 //compiel
 class ResourceManager;
 
@@ -52,6 +53,9 @@ public:
 	int LED_GREEN;
 	int LED_RED;
 	int LED_OFF;
+	midi_byte_t LED_STATUS_BYTE = 0x90;
+	midi_byte_t LED_SOLID_ON_CHANNEL = 15;
+	midi_byte_t LED_FLASHING_ON_CHANNEL = 1;
 
 	std::unordered_map<int,int> volumeControlToLooper;
 	

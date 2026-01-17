@@ -5,7 +5,6 @@
 #include "../../include/general/ResourceManager.h"
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/BelaInterface.h"
-#include "../../include/ui/Controller.h"
 #include "../../include/general/BasicUtilities.h"
 #include "../../include/audio/Loopers.h"
 #include "../../include/audio/Samplers.h"
@@ -156,10 +155,12 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 }
 
 void ModeManager::renderNormal(BelaContext *context, ResourceManager& resourceManager){
-	assert(context != nullptr);
+	resourceManager.processBlockwise();
+	
 	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		for(unsigned int ch = 0; ch < context->audioInChannels; ch++) {
-            audioWrite(context, n, ch, 0.0f);
+		float frame = resourceManager.getNextFrame(n);
+		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
+            audioWrite(context, n, ch,  frame);
         }
 	}
 }

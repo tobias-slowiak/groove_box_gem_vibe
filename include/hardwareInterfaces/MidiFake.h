@@ -55,6 +55,11 @@ public:
 	void enableParser(bool arg) override {}
 	
 	IMidiParser* getParser() override {return &parser;}
+
+	void writeMessage(midi_byte_t statusCode, midi_byte_t channel, midi_byte_t dataByte1, midi_byte_t dataByte2) override {
+		// For the fake, we just print the message
+		rt_printf("MidiFake writeMessage: statusCode: %d, channel: %d, dataByte1: %d, dataByte2: %d\n", statusCode, channel, dataByte1, dataByte2);
+	}
 private:
 	MidiParserFake parser;
 };

@@ -8,13 +8,11 @@
 #include <cerrno>  
 #include <stdio.h>
 #include <cassert>
-//compiel
 #include "../../include/general/ResourceManager.h"
 #include "../../include/streamingBuffer/StreamingBuffer.h"
 #include "../../include/general/ModeManager.h"
 #include "../../include/hardwareInterfaces/DeviceMap.h"
 #include "../../include/hardwareInterfaces/BelaInterface.h"
-#include "../../include/ui/Controller.h"
 #include "../../include/ui/UI.h"
 #include "../../include/audio/Voices.h"
 #include "../../include/audio/Samplers.h"
@@ -27,7 +25,6 @@
 #include "../../include/hardwareInterfaces/MidiFake.h"
 #include "../../include/audio/SamplePack.h"
 #include "../../include/audio/InstrumentCatalog.h"
-
 
 
 bool i2cDevicePresent(int bus, int address)
@@ -72,6 +69,10 @@ void ResourceManager::setup(BelaContext* context){
 		std::vector<U8G2*> u8g2s = initU8G2s(NUM_LINES_PER_DISPLAY);
 	    displayContext.reset(new DisplayContextReal(*this, u8g2s, NUM_LINES_PER_DISPLAY));
 	    displayContext->initDisplayContext();
+		if(context->analogFrames == 0 || context->analogFrames > context->audioFrames) {
+			rt_printf("Error: this example needs analog enabled, with 4 or 8 channels\n");
+			throw std::runtime_error("Analog not enabled");
+		}
 	} else {
 		printf("Interface not Connected\n");
 		displayContext.reset(new DisplayContextFake());
@@ -101,7 +102,12 @@ void ResourceManager::setup(BelaContext* context){
 		printf("Control Midi Device not available\n");
 		controlMidi.reset(new MidiFake());
 	}
-
+	#ifdef LAUNCHKEY_46_MK1
+		controlMidi->writeMessage(0x90, 15, 12, 127); //control mode on to set looper light
+	#endif
+	#ifdef LAUNCHKEY_37_MK3
+		controlMidi->writeMessage(0x90, 15, 12, 127); //control mode on to set looper light
+	#endif
 	//Constants
 	audioFramesPerAnalogFrame = context->audioFrames / context->analogFrames;
 	audioFramesPerSecond = context->audioSampleRate;
@@ -118,14 +124,18 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed keyInstrumentSamplePack\n");
 	drumSamplePack.reset(new SamplePack(*this, voices.get(), "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
 	printf("Constructed drumSamplePack\n");
+	metronome.reset(new Metronome(*this));
+	printf("Constructed Metronome\n");
 	keyInstrumentSamplePack->printBufferInfo();
 	samplers.reset(new Samplers(*this));
 	printf("Constructed Samplers\n");
 	loopers.reset(new Loopers(*this));
 	printf("Constructed Loopers\n");
+	looperLights.reset(new LooperLights(*this));
+	printf("Constructed LooperLights\n");
+	looperLights->initialize();
 
 	modeManager.reset(new ModeManager(*this));
-	controller.reset(new Controller(*this));
 	ui.reset(new UI(*this));
 	printf("Constructed UI\n");
 	inputHandler.reset(new InputHandler(*this));
@@ -180,6 +190,15 @@ IDisplayContext& ResourceManager::getDisplayContext(){
 	}
 }
 
+Metronome& ResourceManager::getMetronome(){
+	if (metronome)
+		return *metronome;
+	else {
+		rt_printf("ERROR: trying to getMetronome(), but that is nullptr\n");
+		throw std::runtime_error("getMetronome() failed: is nullptr");
+	}
+}
+
 Samplers& ResourceManager::getSamplers() {
 	if (samplers)
 		return *samplers;
@@ -204,15 +223,6 @@ Loopers& ResourceManager::getLoopers(){
 	else {
 		rt_printf("ERROR: trying togetLoopers(), but that is nullptr\n");
 		throw std::runtime_error("getLoopers() failed: is nullptr");
-	}
-}
-
-Controller& ResourceManager::getController(){
-	if (controller)
-		return *controller;
-	else {
-		rt_printf("ERROR: trying getController(), but that is nullptr\n");
-		throw std::runtime_error("getController() failed: is nullptr");
 	}
 }
 
@@ -270,6 +280,14 @@ SamplePack& ResourceManager::getDrumSamplePack(){
 	}
 }
 
+LooperLights& ResourceManager::getLooperLights(){
+	if (this->looperLights)
+		return *this->looperLights;
+	else {
+		rt_printf("ERROR: trying getLooperLights(), but that is nullptr\n");
+		throw std::runtime_error("getLooperLights() failed: is nullptr");
+	}
+}
 
 std::vector<float>* ResourceManager::makeTestSample(){
 	testSample = new std::vector<float>();
