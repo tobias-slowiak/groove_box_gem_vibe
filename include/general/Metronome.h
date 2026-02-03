@@ -1,9 +1,9 @@
 #pragma once
 #include <cstdint>
+#include "../audio/SamplePack.h"
 
 class ResourceManager;
 class Voices;
-class SamplePack;
 
 class Metronome{
 public:
@@ -12,27 +12,27 @@ public:
     float getBPM() { return bpm; }
     void setBPM(float bpm);
     int getBeatsElapsed() { return beatsElapsed; }
+    uint64_t getFrameCounter() { return frameCounter; }
+    int getFramesPerBeat() {return framesPerBeat;}
     int getBeatsPerBar() { return beatsPerBar; }
     void setBeatsPerBar(int beatsPerBar);
     int getBeatUnit() { return beatUnit; }
     void setBeatUnit(int beatUnit);
 
-    void mainOutonOffToggle();
-    bool mainOutIsOn() { return mainOutIsOnFlag; }
-    void analogOutonOffToggle();
-    bool analogOutIsOn() { return analogOutIsOnFlag; }
+    void printBufferInfo();
 
-    void process();
+    void processBlockwise();
+    
+    float process();
 
 private:
     ResourceManager& resourceManager;
-    SamplePack& samplePack; //TODO: give it it's own sample pack?
+    SamplePack samplePack; //TODO: give it it's own sample pack?
+    int samplePackSize = 1;
     float bpm = 120;
-    float framesPerBeat;
+    int framesPerBeat;
     int beatsPerBar = 4;
     int beatUnit = 4;
     int beatsElapsed = 0;
-    uint64_t frameCounter;
-    bool mainOutIsOnFlag = true;
-    bool analogOutIsOnFlag = true;
+    int frameCounter;
 };

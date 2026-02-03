@@ -10,27 +10,11 @@ void ResourceManager::processBlockwise(){
     assert(keyInstrumentSamplePack);
     keyInstrumentSamplePack->processBlockwise();
     drumSamplePack->processBlockwise();
+    metronome->processBlockwise();
+    ui->processBlockwise();
+
+    for(unsigned int n = 0; n < audioFramesPerBlock; n++) {
+        float mainOutMix = signalRouter->process(n);
+        recorder->process(mainOutMix);
+    }
 }
-
-
-
-float ResourceManager::getNextFrame(int n){
-    metronome->process();
-
-    //TODO: the following should be done in a AudioRouter class
-    VEC_AT(frames, (int)GainId::Instrument) = voices->process();
-    //TODO: need a better way to direct different audio sources into mixer inputs and inputs of loopers etc.
-    float newFrame = mixer->mix(frames);
-    float looperFrame = loopers->process(newFrame);
-    return (looperFrame + newFrame) * mixer->getGain(GainId::Master);
-}
-
-    /*
-    //TODO voies also contains samplers should it have its own gain?
-    VEC_AT(frames, (int)GainId::Instrument) = voices->process();
-    VEC_AT(frames, (int)GainId::Looper) = loopers->process();
-    VEC_AT(frames, (int)GainId::InputL) = audioRead(context, n, 0);
-    VEC_AT(frames, (int)GainId::InputR) = audioRead(context, n, 1);
-    //TODO: direct input frames into voices and loopers.
-    return mixer->mix(frames);
-    */

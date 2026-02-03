@@ -84,6 +84,10 @@ Notes:
 /*
 General question: on the bela interface why did i not make 2 mono out instead of 1 stereo out?
 */
+
+/*
+On the next hardware interface make 2 Main outs, one that can be stereo and one that can be a second mono out where both channels get the same signal.
+*/
 static ResourceManager resourceManager;
 
 

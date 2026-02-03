@@ -10,13 +10,14 @@
 
 //TODO: on every voice created there is 1 block dropped, therefore a click. investigate!
 Voice::Voice(StreamingBufferIterator& iterator, int note, float playbackRate,
-	ResourceManager& resourceManager,
+	ResourceManager& resourceManager, float gain,
 	float attack, float decay, float sustain, float release,
 	bool repeat)
 :  iteratorPtr(&iterator),
 	note(note),
 	velocity(iterator.sampleIdentifier.second),
 	playbackRate(playbackRate),
+	gain(gain),
 	repeat(repeat),
 	resourceManager(resourceManager),
 	requestId(0),
@@ -39,6 +40,7 @@ Voice::Voice(Voice&& other) noexcept
 	  note(other.note),
 	  velocity(other.velocity),
 	  playbackRate(other.playbackRate),
+	  gain(other.gain),
 	  repeat(other.repeat),
 	  resourceManager(other.resourceManager),
 	  requestId(other.requestId),
@@ -57,6 +59,7 @@ Voice& Voice::operator=(Voice&& other) noexcept {
 		note = other.note;
 		velocity = other.velocity;
 		playbackRate = other.playbackRate;
+		gain = other.gain;
 		repeat = other.repeat;
 		requestId = other.requestId;
 		leftFrame = other.leftFrame;
@@ -89,7 +92,7 @@ float Voice::process(){ // TODO: unelegant with the tuple, do differently
 		return 0.0f;
 	}
 	if(playbackRateIsOne){
-		frame = adsr.process() * frame;
+		frame = gain * adsr.process() * frame;
 		position += 1.0;
 		iterator++;
 		return frame;
@@ -106,7 +109,7 @@ float Voice::process(){ // TODO: unelegant with the tuple, do differently
 		if(rightFrame == END_OF_SAMPLE){
 			adsr.instantOff();
 			iteratorPtr = nullptr;
-			return adsr.process() * leftFrame;
+			return gain * adsr.process() * leftFrame;
 		}
 	}
 	position = newPosition;
@@ -115,7 +118,7 @@ float Voice::process(){ // TODO: unelegant with the tuple, do differently
 	if(frac < 0.0) frac = 0.0;
 	if(frac > 1.0) frac = 1.0;
 	float interpolate = static_cast<float>(leftFrame * (1.0 - frac) + rightFrame * frac);
-	return adsr.process() * interpolate;
+	return gain * adsr.process() * interpolate;
 }
 
 	
@@ -138,7 +141,7 @@ float Voices::process(){
 
 
 void Voices::triggerVoice(StreamingBufferIterator& iterator,
-		int note, float playbackRate, bool repeat,
+		int note, float playbackRate, float gain, bool repeat,
 		float attack, float decay, float sustain, float release){
 	if((int)activeVoices.size() >= maxVoices) {
         // Voice stealing: remove the oldest voice
@@ -146,7 +149,7 @@ void Voices::triggerVoice(StreamingBufferIterator& iterator,
     }
 	assert(iterator.sampleIdentifier.first != ITERATOR_INVALID && "Voices::triggerVoice iterator invalid id");
 	activeVoices.push_back({iterator, note, playbackRate,
-		resourceManager,
+		resourceManager, gain,
 		attack, decay, sustain, release, repeat});
 }
 

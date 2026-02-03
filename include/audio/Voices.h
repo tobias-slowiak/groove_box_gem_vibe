@@ -14,6 +14,7 @@ class Voice {
 public:
 	Voice(StreamingBufferIterator& iterator, int note, float playbackRate,
 		ResourceManager& resourceManager,
+		float gain = 1.0f,
 		float attack = 0.01f, float decay = 0.0f, float sustain = 1.0f, float release = 0.0f,
 	    bool repeat = false);
 
@@ -39,6 +40,7 @@ private:
 	int note;
 	int velocity;
 	float playbackRate = 1.0f;
+	float gain = 1.0f;
 	bool repeat = false;
 
 	ResourceManager& resourceManager;
@@ -62,7 +64,7 @@ public:
     void clear(){activeVoices.clear();}
     
     void triggerVoice(StreamingBufferIterator& iterator,
-		int note, float playbackRate, bool repeat = false,
+		int note, float playbackRate, float gain = 1.0f, bool repeat = false,
 		float attack = 0.0f, float decay = 0.0f, float sustain = 1.0f, float release = 0.1f);
 	
 	//TODO: trigger off all velocities of this note.

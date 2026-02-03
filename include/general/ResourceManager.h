@@ -19,7 +19,6 @@ class IMidi;
 #include "../hardwareInterfaces/DeviceMap.h"
 #include "../hardwareInterfaces/IMidi.h"
 #include "Metronome.h"
-#include "../audio/Voices.h"
 #include "../audio/Samplers.h"
 #include "../audio/Loopers.h"
 #include "../audio/SamplePack.h"
@@ -28,6 +27,8 @@ class IMidi;
 #include "../ui/UI.h"
 #include "../ui/InputHandler.h"
 #include "../hardwareInterfaces/LooperLights.h"
+#include "../audio/SignalRouter.h"
+#include "../audio/Recorder.h"
 
 
 class ResourceManager{
@@ -39,8 +40,6 @@ public:
 	void cleanup(BelaContext* context);
 
 	void processBlockwise();
-
-	float getNextFrame(int n);
 	
 	//#########PUTTERS AND GETTERS
 	BelaContext* getBelaContext();
@@ -55,9 +54,11 @@ public:
 	
 	Samplers& getSamplers();
 	
-	Voices& getVoices();
-	
 	Loopers& getLoopers();
+
+	SignalRouter& getSignalRouter();
+
+	Recorder& getRecorder();
 	
 	UI& getUI();
 
@@ -113,7 +114,6 @@ private:
 	
 	std::vector<float> frames;
 	std::unique_ptr<Metronome> metronome;
-	std::unique_ptr<Voices> voices;
 	std::unique_ptr<Samplers> samplers;
 	std::unique_ptr<Loopers> loopers;
 	std::unique_ptr<IDisplayContext> displayContext;
@@ -122,9 +122,11 @@ private:
 	std::unique_ptr<SamplePack> keyInstrumentSamplePack;
 	std::unique_ptr<SamplePack> drumSamplePack;
 	std::unique_ptr<Mixer> mixer;
+	std::unique_ptr<SignalRouter> signalRouter;
 	std::unique_ptr<UI> ui;
 	std::unique_ptr<InputHandler> inputHandler;
 	std::unique_ptr<LooperLights> looperLights;
+	std::unique_ptr<Recorder> recorder;
 	InstrumentCatalog instrumentCatalog;
 	DrumCatalog drumCatalog;
 	

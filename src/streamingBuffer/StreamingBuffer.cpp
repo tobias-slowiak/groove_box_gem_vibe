@@ -132,7 +132,12 @@ StreamingBufferIterator& StreamingBuffer::begin(SampleIdentifier sampleIdentifie
     //see if first chunk is valid
     int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, 0);
     if(type == SBIType::Read){
-        assert(chunkIndexInBuffer > 0 && chunkIndexInBuffer < totalNumberOfChunks);
+        if(chunkIndexInBuffer < 0 || static_cast<size_t>(chunkIndexInBuffer) >= static_cast<size_t>(totalNumberOfChunks)){
+            std::string errMsg = "StreamingBuffer::begin read iterator: first chunk index in buffer invalid for sample ";;
+            errMsg += std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second);
+            errMsg += ". Was the stream chunk message sent?";
+            throw std::runtime_error(errMsg);
+        }
         if(chunkIndexInBuffer == CHUNK_INVALID) throw std::runtime_error("apparently the stream chunk message was never sent");
         ChunkState& chunkState = VEC_AT(chunkStates, chunkIndexInBuffer);
         if(!chunkState.chunkReady.load(std::memory_order_acquire)) throw std::runtime_error("first chunk should always be ready for read iterator");
@@ -281,19 +286,29 @@ void StreamingBuffer::initializeForLoopers(std::unordered_map<SampleIdentifier, 
     task_sleep_ns(1e8);
 }
 
+
 void StreamingBuffer::printInfo(){
-    rt_printf("StreamingBuffer info:\n");
-    rt_printf("  name=%s path=%s\n", bufferName.c_str(), folderPath.c_str());
-    rt_printf("  chunkLength=%d totalChunks=%d iterators=%d\n", chunkLength, totalNumberOfChunks, totalNumberOfIterators);
-    rt_printf("  chunks size=%zu chunkStates=%zu\n", chunks.size(), chunkStates.size());
-    rt_printf("  availableSamples=%zu chunkIndicesInBufferMap=%zu\n", availableSamples.size(), chunkIndicesInBufferMap.size());
+    printf("StreamingBuffer info:\n");
+    printf("  name=%s path=%s\n", bufferName.c_str(), folderPath.c_str());
+    printf("  chunkLength=%d totalChunks=%d iterators=%d\n", chunkLength, totalNumberOfChunks, totalNumberOfIterators);
+    printf("  chunks size=%zu chunkStates=%zu\n", chunks.size(), chunkStates.size());
+    printf("  availableSamples=%zu chunkIndicesInBufferMap=%zu\n", availableSamples.size(), chunkIndicesInBufferMap.size());
     int counter = 0;
     for(auto& availableSample: availableSamples){
         counter++;
         if(counter > 4) break;
         SampleIdentifier sampleIdentifier = availableSample.first;
-        rt_printf("chunkIndicesInBufferMap[%d,%d] = {%d, %d, ...\n", sampleIdentifier.first, sampleIdentifier.second, VEC_AT(chunkIndicesInBufferMap[sampleIdentifier], 0), VEC_AT(chunkIndicesInBufferMap[sampleIdentifier], 1));
-
+        rt_printf("chunkIndicesInBufferMap[%d,%d] = {%d", sampleIdentifier.first, sampleIdentifier.second, VEC_AT(chunkIndicesInBufferMap[sampleIdentifier], 0));
+        int vecounter = 1;
+        for(size_t ci = 1; ci < chunkIndicesInBufferMap[sampleIdentifier].size(); ci++){
+            vecounter++;
+            if(vecounter > 4){
+                rt_printf(", ...");
+                break;
+            }
+            rt_printf(", %d", VEC_AT(chunkIndicesInBufferMap[sampleIdentifier], ci));
+        }
+        rt_printf("}\n");
     }
     rt_printf("...\n");
     rt_printf("  iteratorAssignIndex=%zu freeChunkIdx=%zu\n", StreamingBufferIteratorAssignIndex, freeChunkSearchIdx.load(std::memory_order_relaxed));

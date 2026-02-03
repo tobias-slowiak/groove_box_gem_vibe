@@ -62,9 +62,10 @@ void InputHandler::handleMessage(InterfaceMessage& message){
                 return;
             }
             if(message.id == deviceMap.buttonMetronomeState){
-                rm.getMetronome().mainOutonOffToggle();
+                rm.getSignalRouter().setOutput(Signal::Metronome, Output::Main1, !rm.getSignalRouter().getOutput(Signal::Metronome, Output::Main1));
+				rm.getSignalRouter().setOutput(Signal::Metronome, Output::Main2, !rm.getSignalRouter().getOutput(Signal::Metronome, Output::Main2));
                 return;
-            } 
+            }
 			break;
 		case InterfaceMessageType::RotEncSignal:
 			if(event == RotaryEncoderEvent::Right)
@@ -89,7 +90,17 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
 
 	switch(message.getType()) {
 		case kmmControlChange:
-			//TODO: looper thing
+			if(deviceMap.volumeControlToLooper.find(message.getDataByte(0)) != deviceMap.volumeControlToLooper.end()){
+				int looperId = deviceMap.volumeControlToLooper[message.getDataByte(0)];
+				rm.getMixer().setLooperGain(looperId, message.getDataByte(1) / 127.0f);
+			}
+			if(deviceMap.midiLooperUndoByte1 == message.getDataByte(0) && message.getDataByte(1) > 0){
+				rm.getLoopers().undo();
+			}
+			if(deviceMap.midiLooperEraseByte1 == message.getDataByte(0) && message.getDataByte(1) > 0){
+				rm.getLoopers().erase();
+			}
+
 			break;
 		case kmmNoteOn:
 			if(message.getChannel() == deviceMap.midiInstrumentChannel){
@@ -122,7 +133,7 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
 					false
 				);
 			}
-			if(message.getChannel() == deviceMap.midiLoooperChannel){
+			if(message.getChannel() == deviceMap.midiLoooperChannel && message.getDataByte(1) > 0){
                 //TODO make this more efficient
                 if(deviceMap.playControlToLooperId.find(message.getDataByte(0)) != deviceMap.playControlToLooperId.end()){
                     int looperId = deviceMap.playControlToLooperId[message.getDataByte(0)];
@@ -133,7 +144,6 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
                     int looperId = deviceMap.recControlToLooperId[message.getDataByte(0)];
                     ui.looperToggleRecord(looperId);
                 }
-				rm.getLooperLights().update();
                 //TODO: check if the following really is OK this way
                 //TODO: logarithm to map volume controls to looper ids
                 if(message.getDataByte(0) >= 96 && message.getDataByte(0) <= 103){
@@ -142,6 +152,7 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
                     float value = message.getDataByte(1) / 127.0f;
                     ui.setLooperGain(looperId, value);
                 }
+				ui.updateDisplay(); // update display to show editableLooperId
 			}
 			break;
 		case kmmNoteOff:

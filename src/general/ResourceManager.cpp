@@ -9,14 +9,13 @@
 #include <stdio.h>
 #include <cassert>
 #include "../../include/general/ResourceManager.h"
-#include "../../include/streamingBuffer/StreamingBuffer.h"
 #include "../../include/general/ModeManager.h"
 #include "../../include/hardwareInterfaces/DeviceMap.h"
 #include "../../include/hardwareInterfaces/BelaInterface.h"
 #include "../../include/ui/UI.h"
-#include "../../include/audio/Voices.h"
 #include "../../include/audio/Samplers.h"
 #include "../../include/audio/Loopers.h"
+#include "../../include/audio/SignalRouter.h"
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/DisplayContextReal.h"
 #include "../../include/hardwareInterfaces/DisplayContextFake.h"
@@ -117,23 +116,26 @@ void ResourceManager::setup(BelaContext* context){
 	
 	//Classes
 	frames.resize((int)GainId::COUNT);
-	voices.reset(new Voices(*this));
-	mixer.reset(new Mixer());
-	printf("Constructed Vocies\n");
-	keyInstrumentSamplePack.reset(new SamplePack(*this, voices.get(), "keyInstrument", instrumentCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	mixer.reset(new Mixer(*this));
+	printf("Constructed Mixer\n");
+	keyInstrumentSamplePack.reset(new SamplePack(*this, "keyInstrument", instrumentCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
 	printf("Constructed keyInstrumentSamplePack\n");
-	drumSamplePack.reset(new SamplePack(*this, voices.get(), "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	drumSamplePack.reset(new SamplePack(*this, "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
 	printf("Constructed drumSamplePack\n");
 	metronome.reset(new Metronome(*this));
 	printf("Constructed Metronome\n");
-	keyInstrumentSamplePack->printBufferInfo();
+	metronome->printBufferInfo();
 	samplers.reset(new Samplers(*this));
 	printf("Constructed Samplers\n");
-	loopers.reset(new Loopers(*this));
-	printf("Constructed Loopers\n");
 	looperLights.reset(new LooperLights(*this));
 	printf("Constructed LooperLights\n");
 	looperLights->initialize();
+	loopers.reset(new Loopers(*this));
+	printf("Constructed Loopers\n");
+	signalRouter.reset(new SignalRouter(*this));
+	printf("Constructed SignalRouter\n");
+	recorder.reset(new Recorder(*this, "testRecording"));
+	printf("Constructed Recorder\n");
 
 	modeManager.reset(new ModeManager(*this));
 	ui.reset(new UI(*this));
@@ -208,21 +210,30 @@ Samplers& ResourceManager::getSamplers() {
 	}
 }
 
-Voices& ResourceManager::getVoices(){
-	if (voices)
-		return *voices;
-	else {
-		rt_printf("ERROR: trying to getVoices(), but that is nullptr\n");
-		throw std::runtime_error("getVoices() failed: is nullptr");
-	}
-}
-
 Loopers& ResourceManager::getLoopers(){
 	if (loopers)
 		return *loopers;
 	else {
 		rt_printf("ERROR: trying togetLoopers(), but that is nullptr\n");
 		throw std::runtime_error("getLoopers() failed: is nullptr");
+	}
+}
+
+SignalRouter& ResourceManager::getSignalRouter(){
+	if (signalRouter)
+		return *signalRouter;
+	else {
+		rt_printf("ERROR: trying to getSignalRouter(), but that is nullptr\n");
+		throw std::runtime_error("getSignalRouter() failed: is nullptr");
+	}
+}
+
+Recorder& ResourceManager::getRecorder(){
+	if (recorder)
+		return *recorder;
+	else {
+		rt_printf("ERROR: trying to getRecorder(), but that is nullptr\n");
+		throw std::runtime_error("getRecorder() failed: is nullptr");
 	}
 }
 

@@ -8,7 +8,7 @@ WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager, sf_
     //TODO: stereo will fail among other reasons bc. the flush and stream buffers are made for mono, should then be interleaved.
     info.channels   = resourceManager.inMonoMode ? 1 : 2;
     info.format     = SF_FORMAT_WAV | SF_FORMAT_FLOAT; // 32‑bit float WAV
-    frames = totalFrames;
+    <frames> = totalFrames;
 
     f = sf_open(filename.c_str(), SFM_WRITE, &info);
     if(!f) throw std::runtime_error(sf_strerror(nullptr));

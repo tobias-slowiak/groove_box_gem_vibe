@@ -17,7 +17,6 @@
 #include "../../include/general/BasicUtilities.h"
 #include "../../include/audio/Loopers.h"
 #include "../../include/audio/Samplers.h"
-#include "../../include/audio/Voices.h"
 #include "../../include/audio/SamplePack.h"
 
 void ModeManager::renderBelaInterfaceTest(BelaContext *context, ResourceManager& resourceManager){
@@ -53,9 +52,8 @@ void ModeManager::renderDisplayContextTest(BelaContext *context, ResourceManager
 	assert(context != nullptr);
 	static int blocksElapsed = 0;
 	blocksElapsed++;
-
 	IDisplayContext& display = resourceManager.getDisplayContext();
-	display.processBlockwise();
+
 	if(secondsElapsed(blocksElapsed, 1)){
 		display.setLines({	{"Hello from", "the left", "display!", ""}, {"and", "hello from", "the right", "display!"} });
 	}
@@ -76,9 +74,7 @@ void ModeManager::renderDisplayContextTest(BelaContext *context, ResourceManager
 		display.setProgress(0, 0.7);
 	}
 	
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-
-	}
+	resourceManager.processBlockwise();
 	if(secondsElapsed(blocksElapsed, 12) ){
 		currentTestDone = true;
 		blocksElapsed = 0;
@@ -94,17 +90,16 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager& resour
 	static int note = 33;
 	static int velocity = 1;
 	SamplePack& sp = resourceManager.getKeyInstrumentSamplePack();
-	Voices& voices = resourceManager.getVoices();
 
 	//delayed start of playback bc otherwise it will stream too slow. investigate!
 
 	if(blocksElapsed == 1){
-		sp.triggerVoice(96,2);
+		sp.triggerVoice(96, 2, false, 1.0f);
 		
-		sp.triggerVoice(96,3);
-		sp.triggerVoice(96,4);
-		sp.triggerVoice(99,5);
-		sp.triggerVoice(99,6);
+		sp.triggerVoice(96, 3, false, 1.0f);
+		sp.triggerVoice(96, 4, false, 1.0f);
+		sp.triggerVoice(99, 5, false, 1.0f);
+		sp.triggerVoice(99, 6, false, 1.0f);
 		
 	}
 
@@ -114,14 +109,14 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager& resour
 	static int sampleNumber = 0;
 	static int blockOffset = 0;
 	if(blocksElapsed == 20000){
-		sp.triggerVoice(93,1);
+		sp.triggerVoice(93, 1, false, 1.0f);
 	}
 	if(blocksElapsed == 30000 + blockOffset){
 		sampleNumber += 1;
 		blockOffset += 500;
 		note += 3;
 		DEBUG_RT_PRINTF("\n\n\n sample %d \n\n\n", sampleNumber);
-		sp.triggerVoice(note,10);
+		sp.triggerVoice(note, 10, false, 1.0f);
 		if(sampleNumber == 10){
 			currentTestDone = true;
 			blocksElapsed = 0;
@@ -131,14 +126,7 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager& resour
 		}
 	}
 
-	sp.processBlockwise();
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = 0.0f;
-		frame += voices.process() * 0.1;
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
-            audioWrite(context, n, ch,  frame);
-        }
-	}
+	resourceManager.processBlockwise();	
 		
 }
 
@@ -258,42 +246,42 @@ void ModeManager::renderLoopersTest(BelaContext *context, ResourceManager& resou
 	Loopers& loopers = resourceManager.getLoopers();
 	static int blocksElapsed = 0;
 	blocksElapsed++;
-	resourceManager.processBlockwise();
 	if(blocksElapsed == 1){
-		resourceManager.getKeyInstrumentSamplePack().triggerVoice(36,1);
-		resourceManager.getMetronome().mainOutonOffToggle();
-		resourceManager.getMetronome().setBPM(60);
-		loopers.looperTriggerModeToggle();
+		resourceManager.getKeyInstrumentSamplePack().triggerVoice(36, 1, false, 1.0f);
+		resourceManager.getSignalRouter().setOutput(Signal::Metronome, Output::Main1, !resourceManager.getSignalRouter().getOutput(Signal::Metronome, Output::Main1));
+		resourceManager.getMetronome().setBPM(120);
+		loopers.setLooperTriggerMode(LooperTriggerMode::Free);
 	}
 	
-	if(secondsElapsed(blocksElapsed, 1)){
+	if(secondsElapsed(blocksElapsed, 0.1)){
 		rt_printf("toggleRecordOn with Free Mode\n");
-		rt_printf("tiggermode: %d\n", static_cast<int>(loopers.getLooperTriggerMode()));
 		loopers.toggleRecord(0);
 	}
-	if(secondsElapsed(blocksElapsed, 2)){
+	if(secondsElapsed(blocksElapsed, 0.8)){
 		rt_printf("toggleRecordOff with Free Mode\n");
 		loopers.toggleRecord(0);
 	}
-	if(secondsElapsed(blocksElapsed, 3)){
-		rt_printf("change trigger mode\n");
-		resourceManager.getKeyInstrumentSamplePack().triggerVoice(39,1);
-		loopers.looperTriggerModeToggle();
+	if(secondsElapsed(blocksElapsed, 5)){
+		rt_printf("turn off free Looper nr. 0\n");
+		loopers.setPlaying(0, false);
+	}
+	if(secondsElapsed(blocksElapsed, 6)){
+		rt_printf("change trigger mode to OnBar. Waiting for beat 1 to toggle rec.\n");
+		resourceManager.getKeyInstrumentSamplePack().triggerVoice(39, 1, false, 1.0f);
+		loopers.setLooperTriggerMode(LooperTriggerMode::OnBar);
 	}
 	//trigger on beat 1
 	int beatOnToggleRec = 1;
 	static bool triggeredOn = false;
-	if(!triggeredOn && blocksElapsed > 4 * resourceManager.audioFramesPerSecond / resourceManager.audioFramesPerBlock){
+	if(!triggeredOn && blocksElapsed > 6 * resourceManager.audioFramesPerSecond / resourceManager.audioFramesPerBlock){
 		if(beatOnToggleRec == resourceManager.getMetronome().getBeatsElapsed()){
 			triggeredOn = true;
-			rt_printf("toggleRecordOn with OnBar Mode\n");
-			rt_printf("tiggermode: %d\n", static_cast<int>(loopers.getLooperTriggerMode()));
-			loopers.togglePlay(0);
+			rt_printf("toggleRecordOn with OnBar Mode. waiting for beat 1 to toggle again.\n");
 			loopers.toggleRecord(1);
 		}
 	}
 	static bool triggeredOff = false;
-	if(!triggeredOff && blocksElapsed > 12 * resourceManager.audioFramesPerSecond / resourceManager.audioFramesPerBlock){
+	if(!triggeredOff && blocksElapsed > 8 * resourceManager.audioFramesPerSecond / resourceManager.audioFramesPerBlock){
 		if(beatOnToggleRec == resourceManager.getMetronome().getBeatsElapsed()){
 			triggeredOff = true;
 			rt_printf("toggleRecordOff with OnBar Mode\n");
@@ -301,12 +289,7 @@ void ModeManager::renderLoopersTest(BelaContext *context, ResourceManager& resou
 		}
 	}
 		
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = resourceManager.getNextFrame(n);
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
-            audioWrite(context, n, ch,  frame);
-        }
-	}
+	resourceManager.processBlockwise();
 
 	if(secondsElapsed(blocksElapsed, 30) ){
 		currentTestDone = true;
@@ -391,7 +374,6 @@ void ModeManager::renderControllerTest(BelaContext *context, ResourceManager& re
 
 	/*MidiFake case done*/
 	
-	resourceManager.processBlockwise();
 	
 	
 	if(blocksElapsed == 1){
@@ -402,12 +384,7 @@ void ModeManager::renderControllerTest(BelaContext *context, ResourceManager& re
 		currentTestDone = true;
 		blocksElapsed = 0;
 	}
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = resourceManager.getNextFrame(n);
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
-            audioWrite(context, n, ch,  frame);
-        }
-	}
+	resourceManager.processBlockwise();
 	
 }
 
@@ -419,7 +396,6 @@ void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager& re
 	static int blocksElapsed = 0;
 	blocksElapsed++;
 	static SamplePack& samplePack = resourceManager.getKeyInstrumentSamplePack();
-	static Voices& voices = resourceManager.getVoices();
 	/*
 	if(secondsElapsed(blocksElapsed, 1)){
 		std::string samplepart = "";
@@ -433,12 +409,7 @@ void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager& re
 		voices.triggerVoice(sample, 21, 0.01, 0.1, 0.7, 0.1, 1.0, 1, false);
 	}
 		*/
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = resourceManager.getVoices().process();
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
-            audioWrite(context, n, ch, 0.1 * frame);
-        }
-	}
+	resourceManager.processBlockwise();
 
 	if(secondsElapsed(blocksElapsed, 5) ){
 		currentTestDone = true;
@@ -475,11 +446,8 @@ void ModeManager::renderSamplePackTest(BelaContext *context, ResourceManager& re
 	so i think 200ms is a good compromise for now.
 	Note that here i can allocate the full BW for this one streaming buffer.
 	in practice i would have multiple streaming buffers competing for BW.
-	TODO: try with emmc instead of sd card.
-	TODO: make this functional and then do it more parametrized so that i can 
-		test different ms once then different nrSamples the next time and so on.
-	TODO: try with better SD card.
-	
+	better sdcard and switching to emmc did not really help. emmc is a little 
+	better in some respects but in others worse. 
 	*/
 void ModeManager::renderStreamingBandwidthTest(BelaContext *context, ResourceManager& resourceManager){
 	assert(context != nullptr);
@@ -487,7 +455,6 @@ void ModeManager::renderStreamingBandwidthTest(BelaContext *context, ResourceMan
 	blocksElapsed++;
 
 	SamplePack& samplePack = resourceManager.getKeyInstrumentSamplePack();
-	Voices& voices = resourceManager.getVoices();
 	static std::unordered_map<SampleIdentifier, size_t>& availableSamples = samplePack.getAvailableSamples();
 	static size_t totalsizeinbytes;
 	if(blocksElapsed == 1){
@@ -529,12 +496,5 @@ void ModeManager::renderStreamingBandwidthTest(BelaContext *context, ResourceMan
 		}
 	}
 
-	samplePack.processBlockwise();
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = 0.0f;
-		//frame += voices.process();
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
-            audioWrite(context, n, ch,  frame);
-        }
-	}
+	resourceManager.processBlockwise();
 }

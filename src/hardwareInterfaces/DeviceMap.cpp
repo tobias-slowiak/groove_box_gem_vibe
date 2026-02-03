@@ -5,7 +5,7 @@
 #include "../../include/hardwareInterfaces/DeviceMap.h"
 #include "../../include/general/ResourceManager.h"
 
-#define LAUNCHKEY_46_MK1
+#define LAUNCHKEY_37_MK3
 
 DeviceMap::DeviceMap(ResourceManager& resourceManager){
 
@@ -23,8 +23,8 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		    {0, GainId::Master},
 		    {1, GainId::Instrument},
 		    {2, GainId::Metronome},
-		    {3, GainId::InputL},
-		    {4, GainId::InputR}
+		    {3, GainId::AudioInL},
+		    {4, GainId::AudioInR}
 		};
 		numberOfButtons = 16;
 		numberOfRotEncs = 2;
@@ -61,7 +61,12 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		LED_STATUS_BYTE = 0x90;
 		LED_SOLID_ON_CHANNEL = 15;
 		LED_FLASHING_ON_CHANNEL = 1;
+
+		initialLooperNumber = 8;
 		
+	
+		midiLooperUndoByte1 = 77;
+		midiLooperEraseByte1 = 78;
 		
 		volumeControlToLooper = {
 		    {21, 0},
@@ -121,14 +126,25 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 	#ifdef LAUNCHKEY_37_MK3
 		keyMidiName = "hw:1,0,0";//TODO: does this reliably work or should i get the name of the midi device and then let the program find the address via the name if thats possible.
 		controlMidiName = "hw:1,0,1";
-
+		midiLoooperChannel = 9;
+		midiSetDrumModeChannel = 15;
+		midiControlChange = 0xB0;
+		midiSetDrumModeByte1 = 0x03;
+		midiSetDrumModeByte2 = 0x01;
+		
 		LED_GREEN = 17;
 		LED_RED = 120;
 		LED_OFF = 0;
 		LED_STATUS_BYTE = 0x90;
-		LED_SOLID_ON_CHANNEL = 15;
-		LED_FLASHING_ON_CHANNEL = 1;
+		LED_SOLID_ON_CHANNEL = 9;
+		LED_FLASHING_ON_CHANNEL = 10;
 		
+		initialLooperNumber = 8;
+
+
+		midiLooperUndoByte1 = 77;
+		midiLooperEraseByte1 = 116;
+
 		volumeControlToLooper = {
 		    {21, 0},
 		    {22, 1},
@@ -141,46 +157,46 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		};
 		
 		playControlToLooperId = {
-		    {36, 0},
-		    {97, 1},
-		    {98, 2},
-		    {99, 3},
-		    {100, 4},
-		    {101, 5},
-		    {102, 6},
-		    {103, 7}
+		    {40, 0},
+		    {41, 1},
+		    {42, 2},
+		    {43, 3},
+		    {48, 4},
+		    {49, 5},
+		    {50, 6},
+		    {51, 7}
 		};
 		looperToPlayControl = {
-		    {0,96},
-		    {1,97},
-		    {2,98},
-		    {3,99},
-		    {4,100},
-		    {5,101},
-		    {6,102},
-		    {7,103}
+		    {0, 40},
+		    {1, 41},
+		    {2, 42},
+		    {3, 43},
+		    {4, 48},
+		    {5, 49},
+		    {6, 50},
+		    {7, 51}
 		};
 		
 		recControlToLooperId = {
-		    {37, 0},
-		    {113, 1},
-		    {114, 2},
-		    {115, 3},
-		    {116, 4},
-		    {117, 5},
-		    {118, 6},
-		    {119, 7},
+		    {36, 0},
+		    {37, 1},
+		    {38, 2},
+		    {39, 3},
+		    {44, 4},
+		    {45, 5},
+		    {46, 6},
+		    {47, 7}
 		};
 		
 		looperToRecControl = {
-		    {0,112},
-		    {1,113},
-		    {2,114},
-		    {3,115},
-		    {4,116},
-		    {5,117},
-		    {6,118},
-		    {7,119},
+		    {0, 36},
+		    {1, 37},
+		    {2, 38},
+		    {3, 39},
+		    {4, 44},
+		    {5, 45},
+		    {6, 46},
+		    {7, 47}
 		};
 	#endif
 }

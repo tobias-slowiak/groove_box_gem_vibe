@@ -24,9 +24,8 @@
 #include "../general/TaskWrapper.h"
 #include "AudioStreamer.h"
 
-// Forward declaration to break circular dependency
-class ResourceManager;
 
+class ResourceManager;
 
 static constexpr float END_OF_SAMPLE = std::numeric_limits<float>::lowest() + 2.0f;
 static constexpr int CHUNK_INVALID = MAX_INT - 1, ITERATOR_INVALID = MAX_INT - 2, CHUNKSTATE_INVALID = MAX_INT - 3;
@@ -152,6 +151,8 @@ public:
 
     void initializeForNewSamplePack(std::unordered_map<SampleIdentifier, size_t>& availableSamples);
 
+    //TODO: rename to a name that fits for samplers loopers and recorder - the only difference to samplepack is that the first chunks are not preloaded
+    //maybe the nicest way would be to have a initialize and then let samplepack preload the first chunks after that
     void initializeForLoopers(std::unordered_map<SampleIdentifier, size_t>& availableLoopers);
 
     size_t getSampleLength(SampleIdentifier sampleIdentifier);

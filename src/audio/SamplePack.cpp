@@ -18,16 +18,15 @@
 
 
 SamplePack::SamplePack(ResourceManager& resourceManager,
-            Voices* voices,
             std::string samplePackName, std::string samplePackFolderPath, size_t bufferSizeInFrames)
-            :voices([&](){ assert(voices != nullptr && "SamplePack ctor voices null"); return voices; }()),
+            :voices(resourceManager),
             samplePackName(std::move(samplePackName)),
             samplePackFolderPath(std::move(samplePackFolderPath)),
             availableSamples(),
             availableKeys(),
             streamingBuffer(resourceManager,
                 bufferSizeInFrames,
-                [&](){ assert(voices != nullptr && "SamplePack ctor voices null while reading maxVoices"); assert(voices->maxVoices > 0 && "SamplePack ctor maxVoices must be positive"); return voices->maxVoices; }(),
+                voices.maxVoices,
                 this->samplePackName + "_buffer", this->samplePackFolderPath,
                 availableSamples),
             initTaskName(this->samplePackName + "_ITask"),
@@ -36,6 +35,7 @@ SamplePack::SamplePack(ResourceManager& resourceManager,
     assert(!this->samplePackName.empty() && "SamplePack ctor samplePackName empty");
     assert(!this->samplePackFolderPath.empty() && "SamplePack ctor samplePackFolderPath empty");
     assert(bufferSizeInFrames > 0 && "SamplePack ctor bufferSizeInFrames must be > 0");
+    assert(voices.maxVoices > 0 && "SamplePack ctor maxVoices must be positive");
     DEBUG_PRINTF("SamplePack ctor: name=%s folder=%s bufferFrames=%u\n",
         this->samplePackName.c_str(), this->samplePackFolderPath.c_str(), (unsigned int)bufferSizeInFrames);
 
@@ -148,7 +148,7 @@ SampleIdentifier SamplePack::findClosestSample(SampleIdentifier sampleIdentifier
     }
     int smallerVelocity, largerVelocity, bestVelocity;
     smallerVelocity = largerVelocity = bestVelocity = sampleIdentifier.second;
-    while(true){
+    while(smallerVelocity != 0 || largerVelocity != 256){
         auto it = availableSamples.find({bestKey, smallerVelocity});
         if (it != availableSamples.end()) {
             bestVelocity = smallerVelocity;
@@ -160,30 +160,33 @@ SampleIdentifier SamplePack::findClosestSample(SampleIdentifier sampleIdentifier
             break;
         }
         smallerVelocity--;
-        assert(smallerVelocity > 0 && "SamplePack::findClosestSample went out of bounds low vel");
+        if(smallerVelocity < 0) smallerVelocity = 0;
         largerVelocity++;
-        assert(largerVelocity <= 256 && "SamplePack::findClosestSample went out of bounds high vel");
+        if(largerVelocity > 256) largerVelocity = 256;
     }
     return {bestKey, bestVelocity};
 }
 
-void SamplePack::triggerVoice(int note, int midiVelocity){
-    assert(voices != nullptr && "SamplePack::triggerVoice voices null");
+void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity, float explicitGain){
     assert(!availableSamples.empty() && "SamplePack::triggerVoice no available samples");
     assert(note >= 0 && note < 128 && "SamplePack::triggerVoice key out of MIDI range");
     assert(midiVelocity >= 0 && midiVelocity < 128 && "SamplePack::triggerVoice velocity out of MIDI range");
     assert(midiVelocity > 0 && "SamplePack::triggerVoice triggered with vel==0");
+    if(!gainFromVelocity){
+        assert(explicitGain >= 0.0f && "SamplePack::triggerVoice explicitGain must be non-negative");
+    }
+    float gain = gainFromVelocity ? (static_cast<float>(midiVelocity) / 127.0f) : explicitGain;
     SampleIdentifier sampleIdentifier{note, midiToSampleVelocity(midiVelocity)};
     SampleIdentifier closestSample = findClosestSample(sampleIdentifier);
     assert(availableSamples.find(closestSample) != availableSamples.end() && "SamplePack::triggerVoice closestSample not in availableSamples");
     float playbackRate = powf(2.0f, (float)(sampleIdentifier.first - closestSample.first) / 12.0f);
     StreamingBufferIterator& iterator = streamingBuffer.begin(closestSample, SBIType::Read, playbackRate);
-    DEBUG_RT_PRINTF("playbackrate %f on original sample %d, %d with chosen sample %d %d\n", playbackRate, sampleIdentifier.first, sampleIdentifier.second, closestSample.first, closestSample.second);
-    voices->triggerVoice(iterator, note, playbackRate);
+    //DEBUG_RT_PRINTF("playbackrate %f on original sample %d, %d with chosen sample %d %d\n", playbackRate, sampleIdentifier.first, sampleIdentifier.second, closestSample.first, closestSample.second);
+    voices.triggerVoice(iterator, note, playbackRate, gain);
 }
 
 void SamplePack::triggerOff(int note){
-    voices->triggerOff(note);
+    voices.triggerOff(note);
 }
 
 int SamplePack::midiToSampleVelocity(int midiVelocity){
@@ -192,4 +195,8 @@ int SamplePack::midiToSampleVelocity(int midiVelocity){
 
 void SamplePack::processBlockwise(){
     streamingBuffer.processBlockwise();
+}
+
+float SamplePack::process(){
+    return voices.process();
 }

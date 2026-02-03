@@ -3,42 +3,35 @@
 #include "../general/BasicUtilities.h"
 //compile
 
+//TODO: change name to just simply Gain
 enum class GainId{
     Master,
     Instrument,
+    Drums,
     Metronome,
     Looper,
     Sampler,
-    InputL,
-    InputR,
+    AudioInL,
+    AudioInR,
+    AnalogIn1,
+    AnalogIn2,
     COUNT
 };
 
+class ResourceManager;
+
 class Mixer{
 public:
-    Mixer(){
-        for(int i = 0; i < (int)GainId::COUNT; i++){
-            gainz.push_back(1.0f);
-        }
-    }
+    Mixer(ResourceManager& resourceManager);
 
-    float mix(std::vector<float>& frames){
-        float frame = 0.0f;
-        for(int i = 0; i < (int)GainId::COUNT; i++){
-            frame += VEC_AT(gainz, i) * VEC_AT(frames, i);
-        }
-        return frame;
-    }
+    void setGain(GainId gainId, float value);
+    void setLooperGain(int looperIndex, float value);
 
-    void setGain(GainId gainId, float value){
-        rt_printf("Setting gain %d to %.3f\n", (int)gainId, value);
-        VEC_AT(gainz, (int)gainId) = value;
-    }
-
-    float getGain(GainId gainId){
-        return VEC_AT(gainz, (int)gainId);
-    }
+    float getLooperGain(int looperIndex);
+    float getGain(GainId gainId);
 
 private:
+    ResourceManager& resourceManager;
     std::vector<float> gainz;
+    std::vector<float> looperGainz;
 };

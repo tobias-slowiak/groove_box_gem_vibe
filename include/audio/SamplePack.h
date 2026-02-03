@@ -8,16 +8,15 @@
 #include <utility>
 #include "../streamingBuffer/StreamingBuffer.h"
 #include "../general/TaskWrapper.h"
+#include "Voices.h"
 //compile
 class StreamingBuffer;
 using SampleIdentifier = std::pair<int, int>;
 class ResourceManager;
-class Voices;
-
 class SamplePack {
 public:
     // make one for an instrument samplepack (larger) and one for a drum sample pack (smaller)
-    SamplePack(ResourceManager& resourceManager, Voices* voices, 
+    SamplePack(ResourceManager& resourceManager,
         std::string samplePackName, std::string samplePackFolderPath,
         size_t bufferSizeInFrames);
 
@@ -39,7 +38,7 @@ public:
 
     SampleIdentifier findClosestSample(SampleIdentifier sampleIdentifier);
 
-    void triggerVoice(int note, int midiVelocity);
+    void triggerVoice(int note, int midiVelocity, bool gainFromVelocity = false, float explicitGain = 1.0f);
 
     void triggerOff(int note);
 
@@ -47,10 +46,12 @@ public:
 
     void processBlockwise();
 
+    float process();
+
     void printBufferInfo(){streamingBuffer.printInfo();}
 
 private:
-    Voices* voices;
+    Voices voices;
     std::string samplePackName;
     std::string samplePackFolderPath;
     std::unordered_map<SampleIdentifier, size_t> availableSamples;

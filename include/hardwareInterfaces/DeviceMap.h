@@ -21,9 +21,15 @@ public:
 	DeviceMap(ResourceManager& resourceManager);
 	
 	std::unordered_map<int, GainId> pottiPinToGainId;
+	int midiSetDrumModeChannel = 15;
+	int midiControlChange = 0xB0;
+	int midiSetDrumModeByte1 = 0x03;
+	int midiSetDrumModeByte2 = 0x01;
 	int midiInstrumentChannel = 0;
-	int midiDrumChannel = 1;
+	int midiDrumChannel = -1; // TODO: this is not used yet
 	int midiLoooperChannel = 9;
+	int midiLooperUndoByte1 = 77;
+	int midiLooperEraseByte1 = 116;
 	int numberOfButtons;
 	int numberOfRotEncs;
 	std::vector<std::vector<int>> rotEncPins;
@@ -56,6 +62,8 @@ public:
 	midi_byte_t LED_STATUS_BYTE = 0x90;
 	midi_byte_t LED_SOLID_ON_CHANNEL = 15;
 	midi_byte_t LED_FLASHING_ON_CHANNEL = 1;
+
+	int initialLooperNumber = 8;
 
 	std::unordered_map<int,int> volumeControlToLooper;
 	

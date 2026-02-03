@@ -8,7 +8,6 @@
 #include "../../include/general/BasicUtilities.h"
 #include "../../include/audio/Loopers.h"
 #include "../../include/audio/Samplers.h"
-#include "../../include/audio/Voices.h"
 
 ModeManager::ModeManager(ResourceManager& resourceManager): resourceManager(resourceManager) {
 	context = resourceManager.getBelaContext();
@@ -146,7 +145,7 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 		}
 	}
 
-		for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
+	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
 		float frame = 0.0f;
 		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
             audioWrite(context, n, ch,  frame);
@@ -156,13 +155,7 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 
 void ModeManager::renderNormal(BelaContext *context, ResourceManager& resourceManager){
 	resourceManager.processBlockwise();
-	
-	for(unsigned int n = 0; n < resourceManager.audioFramesPerBlock; n++) {
-		float frame = resourceManager.getNextFrame(n);
-		for(unsigned int ch = 0; ch < context->audioOutChannels; ch++) {
-            audioWrite(context, n, ch,  frame);
-        }
-	}
+
 }
 
 

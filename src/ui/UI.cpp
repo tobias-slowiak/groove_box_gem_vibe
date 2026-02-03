@@ -24,15 +24,17 @@ UI::UI(ResourceManager& resourceManager)
 void UI::menuUp(int displayId){
 	if(displayId == 0){
 		if(state.paramLineInEditMode){
-			state.manipulators[state.currentParamLineIndex].increase();
+			state.paramLines[state.currentParamLineIndex].manipulator.increase();
 		}else{
 			state.currentParamLineIndex--;
 			if(state.currentParamLineIndex < 0) state.currentParamLineIndex = state.paramLines.size() - 1;
 			if(state.currentParamLineIndex < state.subParamLines.size()) state.currentSubParamSetIndex = state.currentParamLineIndex;
+			state.subParamLineInEditMode = false;
+			state.currentSubParamLineIndex = 0;
 		}
 	}else{
 		if(state.subParamLineInEditMode){
-			state.subParamManipulators[state.currentSubParamSetIndex][state.currentSubParamLineIndex].increase();
+			state.subParamLines[state.currentSubParamSetIndex][state.currentSubParamLineIndex].manipulator.increase();
 		}else{
 			state.currentSubParamLineIndex--;
 			if(state.currentSubParamLineIndex < 0) state.currentSubParamLineIndex = state.subParamLines[state.currentSubParamSetIndex].size() - 1;
@@ -44,15 +46,17 @@ void UI::menuUp(int displayId){
 void UI::menuDown(int displayId){
 	if(displayId == 0){
 		if(state.paramLineInEditMode){
-			state.manipulators[state.currentParamLineIndex].decrease();
+			state.paramLines[state.currentParamLineIndex].manipulator.decrease();
 		}else{
 			state.currentParamLineIndex++;
 			if(state.currentParamLineIndex >= (int)state.paramLines.size()) state.currentParamLineIndex = 0;
 			if(state.currentParamLineIndex < state.subParamLines.size()) state.currentSubParamSetIndex = state.currentParamLineIndex;
+			state.subParamLineInEditMode = false;
+			state.currentSubParamLineIndex = 0;
 		}
 	}else{
 		if(state.subParamLineInEditMode){
-			state.subParamManipulators[state.currentSubParamSetIndex][state.currentSubParamLineIndex].decrease();
+			state.subParamLines[state.currentSubParamSetIndex][state.currentSubParamLineIndex].manipulator.decrease();
 		}else{
 			state.currentSubParamLineIndex++;
 			if(state.currentSubParamLineIndex >= (int)state.subParamLines[state.currentSubParamSetIndex].size()) state.currentSubParamLineIndex = 0;
@@ -67,10 +71,11 @@ void UI::menuPush(int displayId){
 			//these parameters only open the subparameter set - nothing to edit here
 			return;
 		}
-		state.manipulators[state.currentParamLineIndex].select();
+		state.paramLines[state.currentParamLineIndex].manipulator.select();
 		state.paramLineInEditMode = !state.paramLineInEditMode;
 	}else{
-		state.subParamManipulators[state.currentSubParamSetIndex][state.currentSubParamLineIndex].select();
+		if(state.subParamLineInEditMode)
+			state.subParamLines[state.currentSubParamSetIndex][state.currentSubParamLineIndex].manipulator.select();
 		state.subParamLineInEditMode = !state.subParamLineInEditMode;
 	}
 	updateDisplay();
@@ -86,9 +91,9 @@ void UI::setLooperGain(int looperId, float value){
 
 void UI::triggerVoice(int note, int velocity, bool melodicMode){
 		if(melodicMode){
-			ctxt.rm.getKeyInstrumentSamplePack().triggerVoice(note, velocity);
+			ctxt.rm.getKeyInstrumentSamplePack().triggerVoice(note, velocity, true, 1.0f);
 		}else{
-			ctxt.rm.getDrumSamplePack().triggerVoice(note, velocity);
+			ctxt.rm.getDrumSamplePack().triggerVoice(note, velocity, true, 1.0f);
 		}
 }
 
@@ -96,7 +101,8 @@ void UI::triggerOff(int note, bool melodicMode){
 	if(melodicMode){
 		ctxt.rm.getKeyInstrumentSamplePack().triggerOff(note);
 	}else{
-		ctxt.rm.getDrumSamplePack().triggerOff(note);
+		if(ctxt.triggerOffInDrumMode)
+			ctxt.rm.getDrumSamplePack().triggerOff(note);
 	}
 }
 
@@ -115,11 +121,37 @@ void UI::masterToggleRecord(){
 	//TODO
 }
 
+
+void UI::processBlockwise(){
+	ctxt.blocksElapsedSinceLastDisplayUpdate++;
+	if(updateDisplayFlag){
+		updateDisplayFlag = false;
+		renderDisplay();
+	}
+
+	if(ctxt.blocksElapsedSinceLastDisplayUpdate >= ctxt.blocksPerDisplayUpdate){
+		ctxt.blocksElapsedSinceLastDisplayUpdate = 0;
+			//TODO: make the following not magic numbers
+			//i also should make some flag that tracks whether i have a parameter that needs updating
+		if(ctxt.stateId == UIStateId::General &&
+			state.currentParamLineIndex == 2 &&
+			ctxt.loopers.getLooperTriggerMode() != LooperTriggerMode::OnBar){
+			updateDisplayFlag = true;
+		}
+	}
+}
+
 void UI::updateDisplay(){
+	updateDisplayFlag = true;
+}
+
+//TOOD: improve the readability of this function and then implement a scrollbar
+void UI::renderDisplay(){
 	std::vector<std::vector<std::string>> liness(2);
 	auto& mainParamLines = state.paramLines;
 	auto& subParamLines = VEC_AT(state.subParamLines, state.currentSubParamSetIndex);
 	int frameLine = ctxt.rm.NUM_LINES_PER_DISPLAY / 2 - (ctxt.rm.NUM_LINES_PER_DISPLAY % 2 == 0 ? 1 : 0);
+	std::vector<int> scrollBarLines = { -1, -1 };
 	std::vector<int> frameStartChars = {0,0};
 	int currentParamIndex, nrParamLines;
 	for(int displayId = 0; displayId < 2; displayId++){
@@ -161,10 +193,6 @@ void UI::updateDisplay(){
 		VEC_AT(textFrames, displayId).push_back(TextFrame{VEC_AT(frameStartChars, displayId), frameLine});
 	}
 	ctxt.rm.getDisplayContext().setLines(liness, textFrames);
-}
-
-void UI::updateLooperLights(){
-	//TODO
 }
 
 

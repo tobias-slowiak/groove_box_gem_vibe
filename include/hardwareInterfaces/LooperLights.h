@@ -3,6 +3,15 @@
 class ResourceManager;
 class Loopers;
 class DeviceMap;
+class IMidi;
+
+enum class LooperLightMessage {
+    PlayingOn,
+    PlayingOff,
+    RecordingOn,
+    RecordingOff,
+    WaitingForBarStart
+};
 
 class LooperLights {
 public:
@@ -10,16 +19,9 @@ public:
 
     void initialize();
 
-    void update();
-
-    void turnOnPlayingLight(int looperIndex);
-    void turnOffPlayingLight(int looperIndex);
-    void turnOnRecordingLight(int looperIndex);
-    void turnOffRecordingLight(int looperIndex);
-    void turnOnWaitingForBarStartLight(int looperIndex);
-    void turnOffWaitingForBarStartLight(int looperIndex);
+    void setLight(LooperLightMessage msg, int looperIndex);
 private:
     ResourceManager& resourceManager;
-    Loopers& loopers;
     DeviceMap& deviceMap;
+    IMidi& midi;
 };
