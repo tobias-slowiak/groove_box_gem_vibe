@@ -94,6 +94,9 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
 				int looperId = deviceMap.volumeControlToLooper[message.getDataByte(0)];
 				rm.getMixer().setLooperGain(looperId, message.getDataByte(1) / 127.0f);
 			}
+			if(deviceMap.midiRecordByte1 == message.getDataByte(0) && message.getDataByte(1) > 0){
+				rm.getRecorder().isRecording() ? rm.getRecorder().stopRecording() : rm.getRecorder().startRecording();
+			}
 			if(deviceMap.midiLooperUndoByte1 == message.getDataByte(0) && message.getDataByte(1) > 0){
 				rm.getLoopers().undo();
 			}

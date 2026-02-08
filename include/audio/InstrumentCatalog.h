@@ -21,7 +21,10 @@ private:
     std::vector<InstrumentInfo> catalog =
     {
         {"Piano", "/mnt/sdcard/Samples/Piano"},
-        {"Std_Bass", "/mnt/sdcard/Samples/Standard_Bass"}
+        {"Std_Bass", "/mnt/sdcard/Samples/Standard_Bass"},
+        {"Sine", "/mnt/sdcard/Samples/SineOscillator"},
+        {"Saw", "/mnt/sdcard/Samples/SawOscillator"},
+        {"Square", "/mnt/sdcard/Samples/SquareOscillator"}
     };
 };
 

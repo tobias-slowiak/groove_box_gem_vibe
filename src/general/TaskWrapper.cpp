@@ -5,7 +5,9 @@
 #include "../../include/streamingBuffer/StreamingBuffer.h"
 #include "../../include/streamingBuffer/StreamingMessage.h"
 #include "../../include/audio/SamplePack.h"
+#include "../../include/audio/Recorder.h"
 //ATTENTION WHEN COMPILING! MIGHT DEMAND A -Rebuild!!
+//compile
 
 #include <errno.h>
 #include <utility>
@@ -155,3 +157,4 @@ template class TaskWrapper<DisplayContextReal, DisplayMessage>;
 template class TaskWrapper<AudioStreamer, StreamingMessage>;
 template class TaskWrapper<StreamingBuffer, StreamingMessage>;
 template class TaskWrapper<SamplePack, DefaultTaskMessage>;
+template class TaskWrapper<Recorder, RecorderMessage>;

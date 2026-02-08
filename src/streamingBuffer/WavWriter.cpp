@@ -1,6 +1,9 @@
 #include "../../include/streamingBuffer/WavWriter.h"
 #include "../../include/general/ResourceManager.h"
 #include <algorithm>
+#include <limits>
+
+int64_t MAX_FRAME_COUNT = std::numeric_limits<int64_t>::max();
 //compiel
 
 WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager, sf_count_t totalFrames) {
@@ -8,12 +11,13 @@ WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager, sf_
     //TODO: stereo will fail among other reasons bc. the flush and stream buffers are made for mono, should then be interleaved.
     info.channels   = resourceManager.inMonoMode ? 1 : 2;
     info.format     = SF_FORMAT_WAV | SF_FORMAT_FLOAT; // 32‑bit float WAV
-    <frames> = totalFrames;
+    frames = totalFrames;
 
     f = sf_open(filename.c_str(), SFM_WRITE, &info);
     if(!f) throw std::runtime_error(sf_strerror(nullptr));
 
     // Pre-size the file to known length
+    /*
     if(sf_command(f, SFC_FILE_TRUNCATE, &frames, sizeof(frames)) != SF_TRUE) {
         // Fallback: write zeros
         //TODO: wouldnt it be better to directly write the correct values on the first go?
@@ -24,7 +28,26 @@ WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager, sf_
             position += batchLength;
         }
     }
+    */
     sf_seek(f, 0, SEEK_SET);
+}
+
+WavWriter::WavWriter(std::string filename, ResourceManager& resourceManager)
+    : WavWriter(filename, resourceManager, MAX_FRAME_COUNT) {
+    // Nothing to do here
+}
+
+void WavWriter::truncateFile(int finalFrames) {
+    // Nothing to do here for now
+    frames = finalFrames;
+    auto result = sf_command(f, SFC_FILE_TRUNCATE, &frames, sizeof(frames));
+    if(result != SF_TRUE) {
+        rt_printf("WavWriter::truncateFile: truncated file to %lld frames\n", (long long)finalFrames);
+    }
+    else {
+        std::string errmsg = "WavWriter::truncateFile errorcode: + " + std::to_string(result) + " with finalFrames=" + std::to_string(finalFrames);
+        throw std::runtime_error(errmsg);
+    }
 }
 
 WavWriter::WavWriter(WavWriter&& other) noexcept

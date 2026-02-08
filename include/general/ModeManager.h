@@ -18,6 +18,7 @@ enum class Mode{
 	ControllerTest,
 	SamplePack,
 	StreamingBandwidthTest,
+	CreateOsciSamples,
 	COUNT
 };
 
@@ -48,6 +49,8 @@ public:
 	void renderSamplePackTest(BelaContext *context, ResourceManager& resourceManager);
 
 	void renderStreamingBandwidthTest(BelaContext *context, ResourceManager& resourceManager);
+
+	void renderCreateOsciSamples(BelaContext *context, ResourceManager& resourceManager);
 	
 	void modeShift(int indexShift, Mode* mode);
 	

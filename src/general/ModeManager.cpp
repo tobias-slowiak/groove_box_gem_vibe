@@ -26,7 +26,8 @@ ModeManager::ModeManager(ResourceManager& resourceManager): resourceManager(reso
 					"MidiTest",
 					"ControllerTest",
 					"SamplePackTest",
-					"StreamingBandwidthTest"
+					"StreamingBandwidthTest",
+					"CreateOsciSamples"
 				};
 }
 
@@ -89,6 +90,9 @@ void ModeManager::render(BelaContext *context, ResourceManager& resourceManager)
 			break;
 		case Mode::StreamingBandwidthTest:
 			renderStreamingBandwidthTest(context, resourceManager);
+			break;
+		case Mode::CreateOsciSamples:
+			renderCreateOsciSamples(context, resourceManager);
 			break;
 	    case Mode::COUNT:
 	        rt_printf("ERROR: COUNT mode should not reach ModeManager::render()\n");
@@ -155,7 +159,131 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 
 void ModeManager::renderNormal(BelaContext *context, ResourceManager& resourceManager){
 	resourceManager.processBlockwise();
+}
 
+void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager& resourceManager){
+	static size_t blocksElapsed = 0;
+	blocksElapsed++;
+	static ResourceManager& rm = resourceManager;
+	static int midiNote = 35; //Note E0
+	static int midiVelocity = 64;
+	static float frequency = 440.0f * powf(2.0f, (midiNote - 69.0f) / 12.0f);
+	static float sampleLengthInSeconds = 1.0f/frequency;
+	static int totalSamples = static_cast<int>(sampleLengthInSeconds * resourceManager.audioFramesPerSecond);
+	static std::vector<float> sample(totalSamples, 0.0f);
+	static bool recordingSine = false;
+	static bool recordingSaw = false;
+	static bool recordingSquare = false;
+	static int recordingIndex = 0;
+
+	rm.getRecorder().processBlockwise();
+
+	if(blocksElapsed == 1){
+		rt_printf("Creating Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, frequency);
+		//TODO: remove this whole testSampleThing
+		//The following will drop blocks - too lazy to make task do it
+		for(int i = 0; i < totalSamples; i++){
+			float time = (float)i / resourceManager.audioFramesPerSecond;
+			float omega = 2 * M_PI * frequency;
+			sample[i] = 0.1f * sinf(omega * time);
+		}
+	}
+	if(blocksElapsed == resourceManager.blocksPerSecond * 2){ // wait 2 seconds for the initialization to finish
+		recordingSine = true;
+		std::string filePath = resourceManager.SAMPLES_PATH + "SineOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
+		rm.getRecorder().setNewFilename(filePath);
+		rt_printf("Writing sample to %s\n", filePath.c_str());
+		rm.getRecorder().startRecording();
+	}
+	if(recordingSine){
+		for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
+			if(recordingIndex >= 100 * totalSamples){
+				recordingSine = false;
+				rm.getRecorder().stopRecording();
+				rt_printf("Finished writing sample.\n");
+				break;
+			}
+			float nextSample = sample[recordingIndex % totalSamples];
+			if(recordingIndex < totalSamples && recordingIndex % (totalSamples / 8) == 0){
+				int recordingSegment = recordingIndex / (totalSamples / 8);
+				rt_printf("Recording sample at %f pi: %.5f * 0.1\n", (float)recordingSegment * 0.25f, nextSample * 10.0f);
+			}
+			rm.getRecorder().process(nextSample);
+			recordingIndex++;
+		}
+	}
+	
+	if(blocksElapsed == resourceManager.blocksPerSecond * 3.5){
+		rt_printf("Creating Saw Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, frequency);
+		for(int i = 0; i < totalSamples; i++){
+			float time = (float)i / resourceManager.audioFramesPerSecond;
+			float omega = 2 * M_PI * frequency;
+			sample[i] = 0.1f * (2.0f * (time * frequency - floorf(0.5f + time * frequency)));
+		}
+	}
+	if(blocksElapsed == resourceManager.blocksPerSecond * 4){
+		recordingIndex = 0;
+		recordingSaw = true;
+		std::string filePath = resourceManager.SAMPLES_PATH + "SawOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
+		rm.getRecorder().setNewFilename(filePath);
+		rt_printf("Writing sample to %s\n", filePath.c_str());
+		rm.getRecorder().startRecording();
+	}
+	if(recordingSaw){
+		for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
+			if(recordingIndex >= 100 * totalSamples){
+				recordingSaw = false;
+				rm.getRecorder().stopRecording();
+				rt_printf("Finished writing sample.\n");
+				break;
+			}
+			float nextSample = sample[recordingIndex % totalSamples];
+			if(recordingIndex < totalSamples && recordingIndex % (totalSamples / 8) == 0){
+				int recordingSegment = recordingIndex / (totalSamples / 8);
+				rt_printf("Recording sample at %f pi: %.5f * 0.1\n", (float)recordingSegment * 0.25f, nextSample * 10.0f);
+			}
+			rm.getRecorder().process(nextSample);
+			recordingIndex++;
+		}
+	}
+	if(blocksElapsed == resourceManager.blocksPerSecond * 5.5){
+		rt_printf("Creating Square Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, frequency);
+		for(int i = 0; i < totalSamples; i++){
+			float time = (float)i / resourceManager.audioFramesPerSecond;
+			float omega = 2 * M_PI * frequency;
+			sample[i] = 0.1f * (sinf(omega * time) >= 0 ? 1.0f : -1.0f);
+		}
+	}
+	if(blocksElapsed == resourceManager.blocksPerSecond * 6){
+		recordingIndex = 0;
+		recordingSquare = true;
+		std::string filePath = resourceManager.SAMPLES_PATH + "SquareOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
+		rm.getRecorder().setNewFilename(filePath);
+		rt_printf("Writing sample to %s\n", filePath.c_str());
+		rm.getRecorder().startRecording();
+	}
+	if(recordingSquare){
+		for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
+			if(recordingIndex >= 100 * totalSamples){
+				recordingSquare = false;
+				rm.getRecorder().stopRecording();
+				rt_printf("Finished writing sample.\n");
+				break;
+			}
+			float nextSample = sample[recordingIndex % totalSamples];
+			if(recordingIndex < totalSamples && recordingIndex % (totalSamples / 8) == 0){
+				int recordingSegment = recordingIndex / (totalSamples / 8);
+				rt_printf("Recording sample at %f pi: %.5f * 0.1\n", (float)recordingSegment * 0.25f, nextSample * 10.0f);
+			}
+			rm.getRecorder().process(nextSample);
+			recordingIndex++;
+		}
+	}
+	
+	if(blocksElapsed > resourceManager.blocksPerSecond * 10){ // wait 10 seconds max
+		currentTestDone = true;
+		blocksElapsed = 0;
+	}
 }
 
 

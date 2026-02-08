@@ -141,6 +141,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		
 		initialLooperNumber = 8;
 
+		midiRecordByte1 = 117;
 
 		midiLooperUndoByte1 = 77;
 		midiLooperEraseByte1 = 116;

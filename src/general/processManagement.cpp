@@ -12,6 +12,7 @@ void ResourceManager::processBlockwise(){
     drumSamplePack->processBlockwise();
     metronome->processBlockwise();
     ui->processBlockwise();
+    recorder->processBlockwise();
 
     for(unsigned int n = 0; n < audioFramesPerBlock; n++) {
         float mainOutMix = signalRouter->process(n);

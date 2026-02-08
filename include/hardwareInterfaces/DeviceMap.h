@@ -23,6 +23,9 @@ public:
 	std::unordered_map<int, GainId> pottiPinToGainId;
 	int midiSetDrumModeChannel = 15;
 	int midiControlChange = 0xB0;
+
+	int midiRecordByte1 = 117;
+
 	int midiSetDrumModeByte1 = 0x03;
 	int midiSetDrumModeByte2 = 0x01;
 	int midiInstrumentChannel = 0;

@@ -20,6 +20,15 @@ X is the first letter of the stream name.
 
 */
 
+/*
+WORKFLOW
+Communication between threads via messages.
+each class that owns a taskwrapper needs to be extern ... defined here.
+each class that owns a taskwrapper needs to do
+processBlockwise() which does taskCheckAndWorkMessages();
+and also audioThreadCheckandworkmessages() if it needs to do things on the audio thread.
+*/
+
 //taskmessage for tasks that only do one thing.
 struct DefaultTaskMessage{};
 
@@ -90,6 +99,8 @@ class AudioStreamer;
 class StreamingBuffer;
 struct StreamingMessage;
 class SamplePack;
+class Recorder;
+struct RecorderMessage;
 
 //so the way i understand the follwing is that if i do not do this,
 //the task wrapper class for a certain template type is compiled by the 
@@ -103,3 +114,4 @@ extern template class TaskWrapper<DisplayContextReal, DisplayMessage>;
 extern template class TaskWrapper<AudioStreamer, StreamingMessage>;
 extern template class TaskWrapper<StreamingBuffer, StreamingMessage>;
 extern template class TaskWrapper<SamplePack, DefaultTaskMessage>;
+extern template class TaskWrapper<Recorder, RecorderMessage>;

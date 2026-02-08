@@ -134,7 +134,7 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed Loopers\n");
 	signalRouter.reset(new SignalRouter(*this));
 	printf("Constructed SignalRouter\n");
-	recorder.reset(new Recorder(*this, "testRecording"));
+	recorder.reset(new Recorder(*this, "/mnt/sdcard/Samples/Recordings/recording.wav"));
 	printf("Constructed Recorder\n");
 
 	modeManager.reset(new ModeManager(*this));
@@ -300,6 +300,7 @@ LooperLights& ResourceManager::getLooperLights(){
 	}
 }
 
+//TODO: remove this whole testSampleThing
 std::vector<float>* ResourceManager::makeTestSample(){
 	testSample = new std::vector<float>();
 	int sampleSize = 3 * 44100;
