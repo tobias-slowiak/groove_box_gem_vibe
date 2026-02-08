@@ -11,7 +11,7 @@ int bpmToFramesPerBeat(float bpm, int sampleRate, int beatUnit) {
 
 Metronome::Metronome(ResourceManager& resourceManager)
                 : resourceManager(resourceManager),
-                samplePack(resourceManager, "metronome", "/mnt/sdcard/Samples/metronomeSets/hiHat808", 44100 * 5) {  // 5 seconds buffer should be plenty
+                samplePack(resourceManager, "metronome", "/root/Bela/Samples/metronomeSets/hiHat808", 44100 * 5) {  // 5 seconds buffer should be plenty
     framesPerBeat = bpmToFramesPerBeat(bpm, resourceManager.audioFramesPerSecond, beatUnit);
     frameCounter = 0;
 }

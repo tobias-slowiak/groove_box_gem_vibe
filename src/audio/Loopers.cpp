@@ -237,7 +237,7 @@ Loopers::Loopers(ResourceManager& resourceManager):
 	streamingBuffer(resourceManager,
                 TOTAL_LOOPER_BUFFER_FRAMES,
                 this->numberOfLoopers * 4, //4 iterators per looper TODO: how much is needed?
-                "Looper_buffer", "/mnt/sdcard/Samples/Loopers",
+                "Looper_buffer", "/root/Bela/Samples/Loopers",
                 availableLoopers),
 	looperTriggerMode(LooperTriggerMode::OnBar){
 	for(int i = 0; i < numberOfLoopers; i++){

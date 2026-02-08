@@ -104,7 +104,7 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager& resour
 	}
 
 	if(blocksElapsed == 15000){
-		sp.initForFolder("/mnt/sdcard/Samples/Standard_Bass");
+		sp.initForFolder("/root/Bela/Samples/Standard_Bass");
 	}
 	static int sampleNumber = 0;
 	static int blockOffset = 0;

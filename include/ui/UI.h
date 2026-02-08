@@ -1,6 +1,8 @@
 #pragma once
 //compiel
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 class ResourceManager;
 class InterfaceMessage;

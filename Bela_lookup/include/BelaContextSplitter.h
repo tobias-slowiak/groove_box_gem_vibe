@@ -1,8 +1,9 @@
 #pragma once
 
 #include <Bela.h>
-#include <PRU.h> // InternalBelaContext
 #include <vector>
+#include "InternalBelaContext.h"
+
 class BelaContextSplitter {
 public:
 	BelaContextSplitter(unsigned int in = 1, unsigned int out = 1, const BelaContext* context = nullptr)
@@ -61,6 +62,11 @@ public:
 	 * channels has to be the same between the two contexts.
 	 */
 	static void contextCopyData(const InternalBelaContext* src, InternalBelaContext* dst);
+	/**
+	 * Copy context structure and pointers without allocating new memory or copying
+	 * data to new buffers. All pointers will point the same place for src and dst.
+	 */
+	static void contextMirror(const InternalBelaContext* csrc, InternalBelaContext* cdst);
 	static void contextAllocate(InternalBelaContext* ctx);
 	static bool test();
 private:
@@ -95,4 +101,3 @@ private:
 	struct streamOffsets offsets[kNumStreams];
 	direction_t direction;
 };
-

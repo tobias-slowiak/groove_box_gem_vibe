@@ -30,7 +30,16 @@ public:
 		TLV320AIC3104 = 0,
 		TLV320AIC3106,
 	} CodecType;
-	
+
+	// Up to and including getDualRateLimit(), it can run as either single-rate,
+	// or dual-rate. Above this, it can only run as dual-rate
+	// Single-rate: it generates 256-bit clocks per frame when in TDM master mode.
+	// Dual-rate: it generates 128-bit clocks per frame when in TDM master mode
+	static float getDualRateLimit()
+	{
+		return 53000;
+	}
+
 	int writeRegister(unsigned int reg, unsigned int value);
 	int readRegister(unsigned int reg);
 
@@ -67,7 +76,7 @@ public:
 
 	void setVerbose(bool isVerbose);
 
-	I2c_Codec(int i2cBus, int I2cAddress, CodecType type, bool verbose = false);
+	I2c_Codec(int i2cBus, int I2cAddress, CodecType type, double sampleRate, bool verbose = false);
 	~I2c_Codec();
 
 	virtual McaspConfig& getMcaspConfig();
@@ -80,6 +89,7 @@ private:
 	int writeRoutingVolumeControlReg(std::array<unsigned char,kNumIoChannels> const & regs, std::array<float,kNumIoChannels>const & volumes, bool enabled);
 	int writeHPVolumeRegisters();
 	int writeLineOutVolumeRegisters();
+	int configureSampleRateAndFrameSize(double sampleRate, int bitsPerFrame);
 protected:
 	int configureDCRemovalIIR(bool enable); //called by startAudio()
 	int codecType;
@@ -96,6 +106,13 @@ protected:
 	bool differentialInput;
 	bool unmutedPowerStage;
 	double micBias;
+	double fsRef;
+	bool dualRate;
+	bool doubleNCodec;
+	bool wclkOnGpio1 = false;
+	bool bclkOnGpio2 = false;
+	bool auxClkOutOnGpio1 = false;
+	bool gotMcaspConfig = false;
 	typedef enum
 	{
 		InitMode_init = 0,

@@ -1,3 +1,4 @@
+#pragma once
 /**
  * DataBuffer.h
  *
@@ -18,7 +19,7 @@ class DataBuffer
 
 		void setType (char type)
 	       	{
-			if(type == 'c' || type == 'd' || type == 'f')
+			if(type == 'c' || type == 'j' || type == 'i' || type == 'd' || type == 'f')
 			{
 				_type = type;
 			}

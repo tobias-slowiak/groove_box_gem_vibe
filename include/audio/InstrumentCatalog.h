@@ -20,11 +20,11 @@ public:
 private:
     std::vector<InstrumentInfo> catalog =
     {
-        {"Piano", "/mnt/sdcard/Samples/Piano"},
-        {"Std_Bass", "/mnt/sdcard/Samples/Standard_Bass"},
-        {"Sine", "/mnt/sdcard/Samples/SineOscillator"},
-        {"Saw", "/mnt/sdcard/Samples/SawOscillator"},
-        {"Square", "/mnt/sdcard/Samples/SquareOscillator"}
+        {"Piano", "/root/Bela/Samples/Piano"},
+        {"Std_Bass", "/root/Bela/Samples/Standard_Bass"},
+        {"Sine", "/root/Bela/Samples/SineOscillator"},
+        {"Saw", "/root/Bela/Samples/SawOscillator"},
+        {"Square", "/root/Bela/Samples/SquareOscillator"}
     };
 };
 
@@ -38,6 +38,6 @@ public:
 private:
     std::vector<InstrumentInfo> catalog =
     {
-        {"808", "/mnt/sdcard/Samples/drumkit_808"}
+        {"808", "/root/Bela/Samples/drumkit_808"}
     };
 };

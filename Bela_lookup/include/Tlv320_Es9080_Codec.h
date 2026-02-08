@@ -4,6 +4,7 @@
 #include <memory>
 #include "../include/I2c_Codec.h"
 #include "../include/Es9080_Codec.h"
+#include <Gpio.h>
 
 class Tlv320_Es9080_Codec : public AudioCodec
 {
@@ -24,7 +25,8 @@ public:
 
 	McaspConfig& getMcaspConfig();
 
-	Tlv320_Es9080_Codec(int tlvI2cBus, int tlvI2cAddr, I2c_Codec::CodecType tlvType, int esI2cBus, int esI2cAddr, int esResetPin, bool verbose);
+	Tlv320_Es9080_Codec(int tlvI2cBus, int tlvI2cAddr, I2c_Codec::CodecType tlvType, int esI2cBus, int esI2cAddr, Gpio::Pin esResetPin,
+						double sampleRate, bool verbose);
 	~Tlv320_Es9080_Codec();
 
 protected:

@@ -134,7 +134,7 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed Loopers\n");
 	signalRouter.reset(new SignalRouter(*this));
 	printf("Constructed SignalRouter\n");
-	recorder.reset(new Recorder(*this, "/mnt/sdcard/Samples/Recordings/recording.wav"));
+	recorder.reset(new Recorder(*this, "/root/Bela/Samples/Recordings/recording.wav"));
 	printf("Constructed Recorder\n");
 
 	modeManager.reset(new ModeManager(*this));

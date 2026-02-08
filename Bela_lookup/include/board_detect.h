@@ -7,9 +7,13 @@ typedef enum {
 	BelaCape,
 	BelaCapeRevC,
 	BelaMiniCape,
+	GemStereo,
+	GemMulti,
+	GemBase,
 	CtagCape,
 	PocketBeagle,
 	BeagleBoneBlack,
+	PocketBeagle2,
 	Tlv320aic3104,
 } Component;
 }

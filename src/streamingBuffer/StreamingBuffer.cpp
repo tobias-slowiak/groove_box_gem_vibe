@@ -1,4 +1,4 @@
-#include <xenomai_wraps.h>
+#include <RtWrappers.h>
 #include "../../include/streamingBuffer/StreamingBuffer.h"
 #include "../../include/streamingBuffer/WavWriter.h"
 #include "../../include/general/BasicUtilities.h"

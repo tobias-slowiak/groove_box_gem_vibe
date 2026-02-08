@@ -1,12 +1,5 @@
-/*
- * DigitalStream.h
- *
- *  Created on: 7 Jun 2016
- *      Author: giulio
- */
+#pragma once
 
-#ifndef DIGITALCHANNELMANAGER_H_
-#define DIGITALCHANNELMANAGER_H_
 #include <Bela.h>
 
 /**
@@ -47,7 +40,7 @@ public:
 	 *
 	*/
 
-	void setCallback(void (*newCallback)(bool, unsigned int, void*)){
+	void setCallback(void (*newCallback)(bool, unsigned int, unsigned int, void*)){
 		stateChangedCallback = newCallback;
 		if(newCallback != NULL){
 			callbackEnabled = true;
@@ -103,7 +96,7 @@ public:
 //				rt_printf("changed: 0x%x, messageRate: 0x%x, ANDed: 0x%x\n", changed, messageRate, changed&messageRate);
 				for(int n = 0; n < 16; ++n){
 					if(changed & (1 << n)){ //if state for this channel has changed, invoke the callback
-						stateChangedCallback(inputValues & (1 << n), frame, callbackArguments[n]);
+						stateChangedCallback(inputValues & (1 << n), frame, n, callbackArguments[n]);
 					}
 				}
 			}
@@ -227,7 +220,7 @@ public:
 			modeOutput = Bela_clearBit(modeOutput, channel);
 		}
 		if(verbose)
-			rt_printf("Bela digital: channel %d is set as %s at %s rate\n", channel,
+			rt_printf("Bela digital: channel %2d is set as %s at %s rate\n", channel,
 				isInput(channel) ? "input" : "output", isSignalRate(channel) ? "signal" : "message");
 	}
 
@@ -236,7 +229,7 @@ public:
 private:
 	bool callbackEnabled;
 	void* callbackArguments[16];
-	void (*stateChangedCallback)(bool value, unsigned int delay, void* arg);
+	void (*stateChangedCallback)(bool value, unsigned int delay, unsigned int channel, void* arg);
 	uint32_t clearDataOut;
 	uint32_t setDataOut;
 	uint16_t modeOutput;
@@ -245,5 +238,3 @@ private:
 	uint16_t signalRate;
 	bool verbose;
 };
-
-#endif /* DIGITALCHANNELMANAGER_H_ */

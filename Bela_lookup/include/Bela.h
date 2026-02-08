@@ -21,16 +21,28 @@
  * Bela is based on the Xenomai real-time Linux extensions (http://xenomai.org) and
  * uses the BeagleBone %PRU subsystem to address the audio and sensor hardware.
  *
- * Further information can be found at http://bela.io
+ * Further information can be found at https://bela.io
  */
 
 #ifndef BELA_H_
 #define BELA_H_
 #define BELA_MAJOR_VERSION 1
-#define BELA_MINOR_VERSION 13
+#define BELA_MINOR_VERSION 17
 #define BELA_BUGFIX_VERSION 0
 
 // Version history / changelog:
+// 1.17.0
+// - added sampleRate to BelaInitSettings
+// - added Bela_initRtBackend(), Bela_gettime(), Bela_nanosleep(), Bela_printFlushBuffers()
+// - turned INPUT and OUTPUT enum into an BelaDigitalDirection
+// 1.16.0
+// - added BelaGem
+// 1.15.0
+// - added threadCount to BelaInitSettings and threadCount and thisThread to BelaContex
+// 1.14.0
+// - added disabledDigitalChannels to BelaInitSettings and corresponding command-line
+// - removed Bela_stopAllAuxiliaryTasks(), Bela_startAuxiliaryTask() and Bela_startAllAuxiliaryTasks()
+//
 // 1.13.0
 // - added Bela_setLineOutLevel() which replaces Bela_setDacLevel() (though
 // with different semantics).
@@ -91,13 +103,27 @@ extern "C"
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdio.h>
+
+// use attributes to provide printf-style compiler warnings
+#ifdef __GNUC__
+#define _ATTRIBUTE(attrs) __attribute__ (attrs)
+#else
+#define _ATTRIBUTE(attrs)
+#endif
+
+// RT-safe printing
 // these functions are currently provided by xenomai.
 // We put these declarations here so we do not have to include
 // Xenomai specific files
-int rt_printf(const char *format, ...);
-int rt_fprintf(FILE *stream, const char *format, ...);
-int rt_vprintf(const char *format, va_list ap);
-int rt_vfprintf(FILE *stream, const char *format, va_list ap);
+int rt_printf(const char *format, ...) _ATTRIBUTE ((__format__ (__printf__, 1, 2)));
+int rt_fprintf(FILE *stream, const char *format, ...) _ATTRIBUTE ((__format__ (__printf__, 2, 3)));
+int rt_vprintf(const char *format, va_list ap) _ATTRIBUTE ((__format__ (__printf__, 1, 0)));
+int rt_vfprintf(FILE *stream, const char *format, va_list ap) _ATTRIBUTE ((__format__ (__printf__, 2, 0)));
+// these are more future-proof wrappers
+int Bela_printf(const char *format, ...) _ATTRIBUTE ((__format__ (__printf__, 1, 2)));
+int Bela_fprintf(FILE *stream, const char *format, ...) _ATTRIBUTE ((__format__ (__printf__, 2, 3)));
+int Bela_vprintf(const char *format, va_list ap) _ATTRIBUTE ((__format__ (__printf__, 1, 0)));
+int Bela_vfprintf(FILE *stream, const char *format, va_list ap) _ATTRIBUTE ((__format__ (__printf__, 2, 0)));
 
 /**
  * A type of Bela hardware.
@@ -107,6 +133,8 @@ typedef enum
 	BelaHw_NoHw = -1, ///< No hardware
 	BelaHw_Bela, ///< Bela
 	BelaHw_BelaMini, ///< Bela Mini
+	BelaHw_GemStereo, ///< Gem Stereo
+	BelaHw_GemMulti, ///< Gem Multi
 	BelaHw_Salt, ///< Salt
 	BelaHw_CtagFace, ///< Ctag Face
 	BelaHw_CtagBeast, ///< Ctag Beast
@@ -162,7 +190,6 @@ typedef enum
 
 /** \cond PRIVATE */
 #define MAX_PRU_FILENAME_LENGTH 256
-#define MAX_UNUSED_LENGTH 224
 #define MAX_PROJECTNAME_LENGTH 256
 /** \endcond */
 
@@ -322,7 +349,7 @@ typedef struct {
 	const uint32_t audioInChannels;
 	/// \brief The number of audio output channels
 	const uint32_t audioOutChannels;
-	/// \brief The audio sample rate in Hz (currently always 44100.0)
+	/// \brief The audio sample rate in Hz
 	const float audioSampleRate;
 
 	/// \brief The number of analog frames per block
@@ -416,6 +443,17 @@ typedef struct {
 
 	/// Number of detected underruns.
 	const unsigned int underrunCount;
+
+	/// \brief Which thread this context is running on.
+	///
+	/// Used for multithreaded rendering. Values range from 0 to (threadCount - 1).
+	const uint32_t thisThread;
+
+	/// \brief Total number of threads in use for render()
+	///
+	/// Used for multithreaded rendering.
+	const uint32_t threadCount;
+
 } BelaContext;
 
 struct BelaChannelGain {
@@ -515,7 +553,7 @@ typedef struct {
 	// to 128KiB
 	unsigned int auxiliaryTaskStackSize;
 
-	// Pointers to the user-defined functions
+	/// Pointers to the user-defined functions
 	bool (*setup)(BelaContext*, void*);
 	void (*render)(BelaContext*, void*);
 	void (*cleanup)(BelaContext*, void*);
@@ -538,8 +576,26 @@ typedef struct {
 	struct BelaChannelGainArray adcGains;
 	/// Level for the audio line level output
 	struct BelaChannelGainArray lineOutGains;
+	/// A bitmask of disabled digital channels
+	uint32_t disabledDigitalChannels;
 
-	char unused[MAX_UNUSED_LENGTH];
+	/// Number of parallel render threads to run
+	unsigned int threadCount;
+
+	/// More pointers to the user-defined functions
+	void (*render_pre)(BelaContext*, void*);
+	void (*render_post)(BelaContext*, void*);
+
+	/// The audio sample rate in Hz
+	float audioSampleRate;
+#ifdef __arm__
+	// there was some unused memory here on armv7.
+	// Keep updating the value as you add more values before or after
+	// TODO: that once the aarch64 API becomes public, you should just
+	// append to the end of the struct and amend this comment accordingly
+	char unused[204];
+#endif // __arm__
+	// end of formerly unused memory
 
 	/// User selected board to work with (as opposed to detected hardware).
 	BelaHw board;
@@ -866,7 +922,7 @@ int Bela_stopRequested();
  */
 #include <time.h>
 typedef struct {
-	int count; ///< Number of samples (tic/toc pairs) in a acquisition cycle. Use 0 to disable.
+	unsigned int count; ///< Number of samples (tic/toc pairs) in a acquisition cycle. Use 0 to disable.
 	unsigned int currentCount; ///< Number of tics in current acquisition cycle
 	long long unsigned int busy; ///< Total CPU time spent being busy (between tic and toc) during the current acquisition cycle
 	long long unsigned int total; ///< Total CPU time (between tic and previous tic) during the current acquisition cycle
@@ -1036,6 +1092,22 @@ int Bela_muteSpeakers(int mute);
 /** @} */
 
 /**
+ * \defgroup warppers Wrappers for real-time functionalities.
+ *
+ * @{
+ */
+
+void Bela_initRtBackend();
+
+int Bela_gettime(struct timespec*);
+
+int Bela_nanosleep(const struct timespec *req, struct timespec *rem);
+
+void Bela_printFlushBuffers();
+
+/** @} */
+
+/**
  * \defgroup auxtask Auxiliary task support
  *
  * These functions are used to create separate real-time tasks (threads) which run at lower
@@ -1105,27 +1177,7 @@ int Bela_scheduleAuxiliaryTask(AuxiliaryTask task);
 #ifdef __cplusplus
 AuxiliaryTask Bela_runAuxiliaryTask(void (*callback)(void*), int priority = 0, void* arg = nullptr);
 #endif // __cplusplus
-/**
- * \brief Initialize an auxiliary task so that it can be scheduled.
- *
- * User normally do not need to call this function.
- *
- * This function will start an auxiliary task but will NOT schedule it.
- * This means that the callback function associated with the task will NOT be executed.
- *
- * It will also set a flag in the associate InternalAuxiliaryTask to flag the
- * task as "started", so that successive calls to the same function for a given AuxiliaryTask
- * have no effect.
- * The user should never be required to call this function directly, as it is called
- * by Bela_scheduleAuxiliaryTask if needed (e.g.: if a task is scheduled in setup() )
- * or immediately after starting the audio thread.
- *
-* \param task Task to start.
- */
 
-int Bela_startAuxiliaryTask(AuxiliaryTask task);
-int Bela_startAllAuxiliaryTasks();
-void Bela_stopAllAuxiliaryTasks();
 void Bela_deleteAllAuxiliaryTasks();
 
 /** @} */
@@ -1151,7 +1203,7 @@ void Bela_deleteAllAuxiliaryTasks();
  * @{
  */
 
-enum {
+enum BelaDigitalDirection {
 	INPUT = 0,
 	OUTPUT = 1,
 };

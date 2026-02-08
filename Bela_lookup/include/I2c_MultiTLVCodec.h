@@ -47,7 +47,7 @@ public:
 	McaspConfig& getMcaspConfig();
 
 	I2c_MultiTLVCodec(I2c_MultiTLVCodec&&) = delete;
-	I2c_MultiTLVCodec(const std::string& cfgString, TdmConfig tdmConfig = TdmConfig(), bool isVerbose = false);
+	I2c_MultiTLVCodec(const std::string& cfgString, TdmConfig tdmConfig = TdmConfig(), double sampleRate = 44100.0, bool isVerbose = false);
 	~I2c_MultiTLVCodec();
 
 protected:

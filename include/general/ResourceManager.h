@@ -103,7 +103,7 @@ public:
 	bool controlMidiConnected = false;
 	bool keysInMelodicMode = true; //keys vs drums
 	float END_OF_SAMPLE = -999999.0f;
-	std::string SAMPLES_PATH = "/mnt/sdcard/Samples/";
+	std::string SAMPLES_PATH = "/root/Bela/Samples/";
 	int NUM_LINES_PER_DISPLAY = 4;
 	
 private:

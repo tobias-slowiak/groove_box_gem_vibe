@@ -8,10 +8,14 @@
 class Es9080_Codec : public I2c, public AudioCodec
 {
 public:
-	Es9080_Codec(int i2cBus, int i2cAddress, AudioCodecParams::ClockSource clockSource, int resetPin, double mclkFrequency, bool isVerbose);
+	Es9080_Codec(int i2cBus, int i2cAddress, AudioCodecParams::ClockSource clockSource, Gpio::Pin resetPin,
+				 double sampleRate, double mclkFrequency, int numDataLines, bool isVerbose);
 	~Es9080_Codec();
 
 	int initCodec();
+	int setParameters(const AudioCodecParams& codecParams, double mclkFrequency);
+	AudioCodecParams getParameters();
+
 	int startAudio(int parameter);
 	int stopAudio();
 	unsigned int getNumIns();
@@ -31,14 +35,17 @@ private:
 	enum {kNumOutChannels = 8};
 	int writeLineOutVolumeRegisters();
 	int setClocks(unsigned int divide_value, bool MASTER_BCK_DIV1, bool is16Bit, unsigned int MASTER_WS_SCALE);
+	int configureTdmSettings();
 protected:
-	int executeProgram(const std::string& program);
+	int executeProgram(const std::string& program, bool retryOnce = false);
 	std::array<float,kNumOutChannels> lineOutVolume{};
 	AudioCodecParams params;
 	McaspConfig mcaspConfig;
 	bool running;
 	bool verbose;
+	double mclkFrequency;
 	int setAddressForReg(unsigned int reg, bool write);
-	int currentAddress = 0xFF;
+	unsigned int currentAddress = 0xFF;
+	bool gotMcaspConfig = false;
 	Gpio gpio;
 };
