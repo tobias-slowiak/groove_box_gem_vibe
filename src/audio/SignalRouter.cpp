@@ -9,7 +9,11 @@ SignalRouter::SignalRouter(ResourceManager& rm)
       drumSamplePack(rm.getDrumSamplePack()),
       loopers(rm.getLoopers()),
       samplers(rm.getSamplers()),
-      mixer(rm.getMixer())
+      mixer(rm.getMixer()),
+      inputEffectsL(static_cast<float>(rm.audioFramesPerSecond)),
+      inputEffectsR(static_cast<float>(rm.audioFramesPerSecond)),
+      instrumentEffects(static_cast<float>(rm.audioFramesPerSecond)),
+      allLoopersEffects(static_cast<float>(rm.audioFramesPerSecond))
 {
     readOnlySignals = {Signal::AudioInL,
                         Signal::AudioInR,
@@ -26,6 +30,10 @@ SignalRouter::SignalRouter(ResourceManager& rm)
     }
 
     inputFrames.resize(static_cast<int>(Signal::COUNT), 0.0f);
+    looperEffects.reserve(static_cast<size_t>(loopers.size()));
+    for(int i = 0; i < loopers.size(); ++i){
+        looperEffects.emplace_back(static_cast<float>(resourceManager.audioFramesPerSecond));
+    }
 
     // DEFAULT ROUTINGS
     setPath(Signal::Instrument, Signal::Loopers, true);
@@ -51,14 +59,33 @@ SignalRouter::SignalRouter(ResourceManager& rm)
 
 float SignalRouter::process(int n)
 {
+    const float currentTempoBpm = metronome.getBPM();
+    if(std::fabs(currentTempoBpm - lastEffectsTempoBpm) > 0.001f){
+        inputEffectsL.setTempoBpm(currentTempoBpm);
+        inputEffectsR.setTempoBpm(currentTempoBpm);
+        instrumentEffects.setTempoBpm(currentTempoBpm);
+        allLoopersEffects.setTempoBpm(currentTempoBpm);
+        for(size_t looperIndex = 0; looperIndex < looperEffects.size(); ++looperIndex){
+            looperEffects.at(looperIndex).setTempoBpm(currentTempoBpm);
+        }
+        lastEffectsTempoBpm = currentTempoBpm;
+    }
+
     // ------------------------  Process Read only Signals
     inputFrames[(int)Signal::Metronome] = mixer.getGain(GainId::Metronome) * metronome.process();
     inputFrames[(int)Signal::Instrument] =  mixer.getGain(GainId::Instrument) * instrumentSamplePack.process();
     inputFrames[(int)Signal::Drums] = mixer.getGain(GainId::Drums) * drumSamplePack.process();
+    if(resourceManager.keysInMelodicMode){
+        inputFrames[(int)Signal::Instrument] = instrumentEffects.processSample(inputFrames[(int)Signal::Instrument]);
+    } else {
+        inputFrames[(int)Signal::Drums] = instrumentEffects.processSample(inputFrames[(int)Signal::Drums]);
+    }
     inputFrames[(int)Signal::AudioInL] =  mixer.getGain(GainId::AudioInL) * 
                             audioRead(resourceManager.getBelaContext(), n, 0);
+    inputFrames[(int)Signal::AudioInL] = inputEffectsL.processSample(inputFrames[(int)Signal::AudioInL]);
     inputFrames[(int)Signal::AudioInR] = mixer.getGain(GainId::AudioInR) * 
                             audioRead(resourceManager.getBelaContext(), n, 1);
+    inputFrames[(int)Signal::AudioInR] = inputEffectsR.processSample(inputFrames[(int)Signal::AudioInR]);
     /////////!!!!!!!!!!!TODO::: make analog in right this is just a placeholder/provisorium
     inputFrames[(int)Signal::AnalogIn1] = mixer.getGain(GainId::AnalogIn1) * 
                             analogRead(resourceManager.getBelaContext(), n, 0);
@@ -71,7 +98,17 @@ float SignalRouter::process(int n)
         looperInputFrame += routingMatrix[signalIndex][(int)Signal::Loopers] * inputFrames[signalIndex];
         samplerInputFrame += routingMatrix[signalIndex][(int)Signal::Samplers] * inputFrames[signalIndex];
     }
-    inputFrames[(int)Signal::Loopers] = mixer.getGain(GainId::Looper) * loopers.process(looperInputFrame);
+    inputFrames[(int)Signal::Loopers] = 0.0f;
+    std::vector<float>& looperOutput = loopers.process(looperInputFrame);
+    for(size_t looperIndex = 0; looperIndex < looperOutput.size(); looperIndex++){
+        float processedLooperFrame = looperOutput.at(looperIndex);
+        if(looperIndex < looperEffects.size()){
+            processedLooperFrame = looperEffects.at(looperIndex).processSample(processedLooperFrame);
+        }
+        inputFrames[(int)Signal::Loopers] += processedLooperFrame * mixer.getLooperGain(looperIndex);
+    }
+    inputFrames[(int)Signal::Loopers] = allLoopersEffects.processSample(inputFrames[(int)Signal::Loopers]);
+    inputFrames[(int)Signal::Loopers] *= mixer.getGain(GainId::Looper);
     //inputFrames[(int)Signal::Samplers] = mixer.getGain(GainId::Sampler) * samplers.process(samplerInputFrame);
     // ------------------------ Mix to Outputs
     float mainOutMix = 0.0f;
@@ -91,20 +128,36 @@ float SignalRouter::process(int n)
         case Output::Main2:
             audioWrite(resourceManager.getBelaContext(), n, 1, mixedFrame);
             break;
-        ////////////////TODO: Analog outputs must do this if n%analogFramesPerAudioFrame==0 thing
-        case Output::Analog1:
-            if(n % resourceManager.audioFramesPerAnalogFrame == 0)
-                    analogWriteOnce(resourceManager.getBelaContext(), n/2, 5, mixedFrame);
-            break;
-        case Output::Analog2:
-            if(n % resourceManager.audioFramesPerAnalogFrame == 0)
-                    analogWriteOnce(resourceManager.getBelaContext(), n/2, 6, mixedFrame);
-            break;
         default:
             break;
         }
     }
     return mainOutMix;
+}
+
+EffectsChain& SignalRouter::getInputEffects(int channel){
+    if(channel == 0){
+        return inputEffectsL;
+    }
+    if(channel == 1){
+        return inputEffectsR;
+    }
+    throw std::runtime_error("SignalRouter::getInputEffects invalid channel " + std::to_string(channel));
+}
+
+EffectsChain& SignalRouter::getInstrumentEffects(){
+    return instrumentEffects;
+}
+
+EffectsChain& SignalRouter::getLooperEffects(int looperIndex){
+    if(looperIndex < 0 || static_cast<size_t>(looperIndex) >= looperEffects.size()){
+        throw std::runtime_error("SignalRouter::getLooperEffects invalid looperIndex " + std::to_string(looperIndex));
+    }
+    return looperEffects.at(looperIndex);
+}
+
+EffectsChain& SignalRouter::getAllLoopersEffects(){
+    return allLoopersEffects;
 }
 
 bool SignalRouter::getPath(Signal from, Signal to)

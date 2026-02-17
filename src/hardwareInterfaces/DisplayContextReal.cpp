@@ -3,6 +3,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
+#include <algorithm>
 //compiel
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/DisplayContextReal.h"
@@ -85,12 +86,23 @@ void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines){
 		}
 	}	
 	this->textFrames.clear();
+	this->scrollBars.clear();
 	sendTaskMessage();
 }
 
 void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines, std::vector<std::vector<TextFrame>> textFrames){
 	this->lines = lines;
 	this->textFrames = textFrames;
+	this->scrollBars.clear();
+	sendTaskMessage();
+}
+
+void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines,
+								  std::vector<std::vector<TextFrame>> textFrames,
+								  std::vector<ScrollBar> scrollBars){
+	this->lines = lines;
+	this->textFrames = textFrames;
+	this->scrollBars = scrollBars;
 	sendTaskMessage();
 }
 
@@ -100,6 +112,7 @@ void DisplayContextReal::sendTaskMessage(){
 	msg.progressDisplay = progressDisplay;
 	msg.progress = progress;
 	msg.textFrames = textFrames;
+	msg.scrollBars = scrollBars;
 	renderTask.pushMessage(TaskMessageTarget::TaskThread, msg);
 }
 
@@ -142,14 +155,37 @@ void DisplayContextReal::renderDisplay() {
 		    u8g2->drawFrame(0, barY, SCREEN_WIDTH - 2, PROGRESS_HEIGHT);
 		    u8g2->drawBox(0, barY, barWidth, PROGRESS_HEIGHT);
 	    }
+		const bool hasScrollBar = r_scrollBars.size() > static_cast<size_t>(display) &&
+			r_scrollBars.at(display).enabled;
 		if(r_textFrames.size() > display){
 			std::vector<TextFrame>& textFramesOnThisDisplay = VEC_AT(r_textFrames, display);
+			const int rightPadding = hasScrollBar ? 8 : 2;
 			for(auto frame: textFramesOnThisDisplay){
 				int x = frame.startChar * CHARACTER_WIDTH; //approx char width
 				int y = frame.textLine * CHARACTER_HEIGHT - 1;
-				u8g2->drawFrame(x, y, SCREEN_WIDTH - 2 - x, CHARACTER_HEIGHT);
+				int frameWidth = std::max(1, SCREEN_WIDTH - rightPadding - x);
+				u8g2->drawHLine(x, y, frameWidth);
+				u8g2->drawHLine(x, y + CHARACTER_HEIGHT - 1, frameWidth);
+				u8g2->drawVLine(x + frameWidth - 1, y, CHARACTER_HEIGHT);
 			}
-		} 
+		}
+		if(hasScrollBar){
+			const ScrollBar& scrollBar = r_scrollBars.at(display);
+			if(scrollBar.totalItems > 0 && scrollBar.visibleItems > 0){
+				const int trackX = SCREEN_WIDTH - 4;
+				const int trackY = 0;
+				const int trackH = SCREEN_HEIGHT;
+				const int visibleItems = std::min(scrollBar.visibleItems, scrollBar.totalItems);
+				const int proportionalThumb = (trackH * visibleItems) / scrollBar.totalItems;
+				const int thumbH = std::max(4, std::min(trackH / 3, proportionalThumb));
+				const int maxThumbOffset = std::max(0, trackH - thumbH);
+				const int maxSelected = std::max(0, scrollBar.totalItems - 1);
+				const int clampedSelected = std::max(0, std::min(scrollBar.selectedIndex, maxSelected));
+				const int thumbOffset = (maxSelected == 0) ? 0 : (clampedSelected * maxThumbOffset) / maxSelected;
+				u8g2->drawVLine(trackX, trackY, trackH);
+				u8g2->drawBox(trackX - 1, trackY + thumbOffset, 3, thumbH);
+			}
+		}
 	    u8g2->sendBuffer();
 	}
 }
@@ -160,6 +196,7 @@ void DisplayContextReal::taskWorkMessage(std::string& taskName, DisplayMessage m
 		r_progressDisplay = msg.progressDisplay;
 		r_progress = msg.progress;
 		r_textFrames = msg.textFrames;
+		r_scrollBars = msg.scrollBars;
 		renderDisplay();
 		return;
 	}

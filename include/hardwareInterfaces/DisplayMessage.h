@@ -7,4 +7,5 @@ struct DisplayMessage{
     int progressDisplay;
     float progress;
     std::vector<std::vector<TextFrame>> textFrames;
+    std::vector<ScrollBar> scrollBars;
 };

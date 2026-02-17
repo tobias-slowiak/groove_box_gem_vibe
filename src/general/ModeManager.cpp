@@ -104,14 +104,30 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 
 	static size_t blocksElapsed = 0;
 	blocksElapsed++;
+	static bool initialPotSyncDone = false;
 	
 	assert(context != nullptr);
 	IDisplayContext& display = resourceManager.getDisplayContext();
 	BelaInterface* interface = resourceManager.getBelaInterface();
+	DeviceMap& deviceMap = resourceManager.getDeviceMap();
+	Mixer& mixer = resourceManager.getMixer();
 	
 	display.processBlockwise();
 	assert(interface != nullptr);
 	interface->processBlockwise();
+
+	if(!initialPotSyncDone){
+		for(const auto& pinToGain : deviceMap.pottiPinToGainId){
+			int pin = pinToGain.first;
+			GainId gainId = pinToGain.second;
+			if(gainId >= GainId::COUNT) continue;
+			float value = clamp(analogRead(context, 0, pin), 0.0f, 1.0f);
+			if(deviceMap.reversePottis) value = 1.0f - value;
+			mixer.setGain(gainId, value);
+		}
+		initialPotSyncDone = true;
+		rt_printf("TopMenu: initial potentiometer scan applied\n");
+	}
 
 	static Mode selectionMode = Mode::TopMenu;
 	
@@ -128,6 +144,13 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 #ifdef DEBUG_BUILD
 		msg.prettyPrint();
 #endif
+		if(msg.type == InterfaceMessageType::PotSignal){
+			auto it = deviceMap.pottiPinToGainId.find(msg.id);
+			if(it != deviceMap.pottiPinToGainId.end() && it->second < GainId::COUNT){
+				mixer.setGain(it->second, msg.value);
+			}
+			continue;
+		}
 		if(msg.type == InterfaceMessageType::RotEncSignal){
 			RotaryEncoderEvent event = msg.event;
 			if(event == RotaryEncoderEvent::Left) modeShift(-1,&selectionMode);

@@ -1,6 +1,7 @@
 #include "../../include/general/ResourceManager.h"
 #include "../../include/ui/UI.h"
 #include "../../include/hardwareInterfaces/BelaInterface.h"
+#include <algorithm>
 //compiel
 
 
@@ -145,13 +146,13 @@ void UI::updateDisplay(){
 	updateDisplayFlag = true;
 }
 
-//TOOD: improve the readability of this function and then implement a scrollbar
+//TOOD: improve the readability of this function
 void UI::renderDisplay(){
 	std::vector<std::vector<std::string>> liness(2);
 	auto& mainParamLines = state.paramLines;
 	auto& subParamLines = VEC_AT(state.subParamLines, state.currentSubParamSetIndex);
 	int frameLine = ctxt.rm.NUM_LINES_PER_DISPLAY / 2 - (ctxt.rm.NUM_LINES_PER_DISPLAY % 2 == 0 ? 1 : 0);
-	std::vector<int> scrollBarLines = { -1, -1 };
+	std::vector<ScrollBar> scrollBars(2);
 	std::vector<int> frameStartChars = {0,0};
 	int currentParamIndex, nrParamLines;
 	for(int displayId = 0; displayId < 2; displayId++){
@@ -169,6 +170,12 @@ void UI::renderDisplay(){
 			currentParamIndex = state.currentSubParamLineIndex;
 			nrParamLines = paramLines.size();
 		}
+		VEC_AT(scrollBars, displayId) = ScrollBar{
+			true,
+			std::max(1, nrParamLines),
+			ctxt.rm.NUM_LINES_PER_DISPLAY,
+			currentParamIndex
+		};
 		int nrEmptyLines = ctxt.rm.NUM_LINES_PER_DISPLAY - nrParamLines;
 		int maxshift = nrParamLines / 2 - (nrParamLines % 2 == 0 ? 1 : 0);
 		std::vector<std::string>& lines = VEC_AT(liness, displayId);
@@ -192,7 +199,7 @@ void UI::renderDisplay(){
 	for(int displayId = 0; displayId < 2; displayId++){
 		VEC_AT(textFrames, displayId).push_back(TextFrame{VEC_AT(frameStartChars, displayId), frameLine});
 	}
-	ctxt.rm.getDisplayContext().setLines(liness, textFrames);
+	ctxt.rm.getDisplayContext().setLines(liness, textFrames, scrollBars);
 }
 
 

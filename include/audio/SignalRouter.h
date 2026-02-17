@@ -5,12 +5,14 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <stdexcept>
+#include <cmath>
 
 #include "../general/Metronome.h"
 #include "Mixer.h"
 #include "SamplePack.h"
 #include "Loopers.h"
 #include "Samplers.h"
+#include "Effects.h"
 
 class ResourceManager;
 
@@ -33,8 +35,6 @@ enum class Signal {
 enum class Output {
     Main1,
     Main2,
-    Analog1,
-    Analog2,
     COUNT
 };
 
@@ -48,6 +48,11 @@ public:
     bool getPath(Signal from, Signal to) ;
     void setOutput(Signal signal, Output output, bool enabled);
     bool getOutput(Signal signal, Output output) ;
+
+    EffectsChain& getInputEffects(int channel); // 0 = left, 1 = right
+    EffectsChain& getInstrumentEffects();
+    EffectsChain& getLooperEffects(int looperIndex);
+    EffectsChain& getAllLoopersEffects();
 
     float process(int n);
 
@@ -63,4 +68,11 @@ private:
     Loopers& loopers;
     Samplers& samplers;
     Mixer& mixer;
+
+    EffectsChain inputEffectsL;
+    EffectsChain inputEffectsR;
+    EffectsChain instrumentEffects;
+    EffectsChain allLoopersEffects;
+    std::vector<EffectsChain> looperEffects;
+    float lastEffectsTempoBpm = -1.0f;
 };

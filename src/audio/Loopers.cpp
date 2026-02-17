@@ -223,6 +223,7 @@ Loopers::Loopers(ResourceManager& resourceManager):
 	mixer(resourceManager.getMixer()),
 	looperLights(resourceManager.getLooperLights()),
 	numberOfLoopers(resourceManager.getDeviceMap().initialLooperNumber),//TODO: get this from device map or other
+	outputBuffer(numberOfLoopers, 0.0f),
 	availableLoopers([this]{
 		std::unordered_map<SampleIdentifier, size_t> map;
 		map.reserve(static_cast<size_t>(numberOfLoopers));
@@ -350,12 +351,11 @@ void Loopers::setPlaying(int looperIndex, bool playing){
 }
 
 
-float Loopers::process(float inFrame){
-	float mixedFrame = 0.0f;
+std::vector<float>& Loopers::process(float inFrame){
 	for(auto& looper: loopers){
-		mixedFrame += looper.process(inFrame) * mixer.getLooperGain(looper.looperIndex);
+		VEC_AT(outputBuffer, looper.looperIndex) = looper.process(inFrame);
 	}
-	return mixedFrame;
+	return outputBuffer;
 }
 
 void Loopers::undo(int looperIndex){

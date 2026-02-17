@@ -8,9 +8,6 @@
 //compiel
 class ResourceManager;
 
-
-#define BELA_INTERFACE_V1
-#define LAUNCHKEY_46_MK1
 //TODO: make new for launchkey 37 mk3
 
 

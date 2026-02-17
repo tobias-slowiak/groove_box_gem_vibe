@@ -62,6 +62,9 @@ struct UIStateContext {
 	int numberOfSliceForAutoSlice = 2;
 	size_t numberOfBarsForLoopers = 1;
 	bool triggerOffInDrumMode = false; //TODO: maybe make a dedicated drum class that handles this?
+	int effectsTargetIndex = 0;
+	int effectsStageIndex = 0;
+	int effectsNewTypeIndex = 0;
 };
 
 enum class stateNavigationEvent {

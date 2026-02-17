@@ -21,7 +21,13 @@ public:
 		
 	void setLines(std::vector<std::vector<std::string>>lines) override;
 
-	void setLines(std::vector<std::vector<std::string>> lines, std::vector<std::vector<TextFrame>> TextFrames) override {
+	void setLines(std::vector<std::vector<std::string>> lines, std::vector<std::vector<TextFrame>>) override {
+		this->setLines(lines);
+	}
+	
+	void setLines(std::vector<std::vector<std::string>> lines,
+				  std::vector<std::vector<TextFrame>>,
+				  std::vector<ScrollBar>) override {
 		this->setLines(lines);
 	}
 

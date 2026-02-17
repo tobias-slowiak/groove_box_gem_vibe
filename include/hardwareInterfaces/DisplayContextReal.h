@@ -30,6 +30,10 @@ public:
 	void setLines(std::vector<std::vector<std::string>>) override;
     
     void setLines(std::vector<std::vector<std::string>> lines, std::vector<std::vector<TextFrame>> textFrames) override;
+	
+	void setLines(std::vector<std::vector<std::string>> lines,
+				  std::vector<std::vector<TextFrame>> textFrames,
+				  std::vector<ScrollBar> scrollBars) override;
 
     void sendTaskMessage();
 
@@ -67,12 +71,14 @@ private:
     float progress = 0.0f;
 
     std::vector<std::vector<TextFrame>> textFrames;
+    std::vector<ScrollBar> scrollBars;
 
     //render Task only
     std::vector<std::vector<std::string>> r_lines;
     int r_progressDisplay = -1; 
     float r_progress = 0.0f;
     std::vector<std::vector<TextFrame>> r_textFrames;
+    std::vector<ScrollBar> r_scrollBars;
 
     
 };

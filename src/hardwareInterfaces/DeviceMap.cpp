@@ -6,6 +6,7 @@
 #include "../../include/general/ResourceManager.h"
 
 #define LAUNCHKEY_37_MK3
+#define BELA_INTERFACE_V1_GEM
 
 DeviceMap::DeviceMap(ResourceManager& resourceManager){
 
@@ -30,6 +31,38 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		numberOfRotEncs = 2;
 		rotEncPins = {{12,15,14},{6,10,7}};
 		buttonPins = {0,1,2,3,4,5,8,9,11,13};
+		buttonDown = 9;
+		buttonUp = 8;
+		buttonLeft = 11;
+		buttonRight = 13;
+		buttonMasterPlay = 0; 
+		buttonMasterRecord = 1;
+		buttonKeyDrumToggle = 2;
+		buttonMicToggle = 3;
+		buttonMetronomeState = 4;
+		buttonFIVE = 5;
+		numberOfPotentiometers = 8;
+		reversePottis = true;
+		outputGainPotentiometerIndex = 0;
+		metronomeGainPotentiometerIndex = 1;
+		inputGainPotentiometerIndex = 2;
+		instrumentGainPotentiometerNumber = 3;
+		
+		
+	#endif
+
+	#ifdef BELA_INTERFACE_V1_GEM
+		pottiPinToGainId = {
+		    {0, GainId::Master},
+		    {1, GainId::Instrument},
+		    {2, GainId::Metronome},
+		    {3, GainId::AudioInL},
+		    {4, GainId::AudioInR}
+		};
+		numberOfButtons = 16;
+		numberOfRotEncs = 2;
+		rotEncPins = {{12,10,11},{2,0,1}};
+		buttonPins = {6,7,8,9};
 		buttonDown = 9;
 		buttonUp = 8;
 		buttonLeft = 11;
@@ -124,8 +157,8 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 	#endif
 
 	#ifdef LAUNCHKEY_37_MK3
-		keyMidiName = "hw:1,0,0";//TODO: does this reliably work or should i get the name of the midi device and then let the program find the address via the name if thats possible.
-		controlMidiName = "hw:1,0,1";
+		keyMidiName = "hw:0,0,0";//TODO: does this reliably work or should i get the name of the midi device and then let the program find the address via the name if thats possible.
+		controlMidiName = "hw:0,0,1";
 		midiLoooperChannel = 9;
 		midiSetDrumModeChannel = 15;
 		midiControlChange = 0xB0;

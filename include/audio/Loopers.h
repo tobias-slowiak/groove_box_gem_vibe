@@ -115,7 +115,7 @@ public:
 
 	void setEditableLooperIndex(int value){editableLooperIndex = value;}
 
-	float process(float inFrame);
+	std::vector<float>& process(float inFrame);
 	
 	bool isRecording();
 	
@@ -148,6 +148,7 @@ private:
 	LooperLights& looperLights;
 	size_t bufferWriteIndex = 0;
 	int numberOfLoopers;
+	std::vector<float> outputBuffer;
 	int editableLooperIndex = 0;
 	std::unordered_map<SampleIdentifier, size_t> availableLoopers;
 	StreamingBuffer streamingBuffer;
