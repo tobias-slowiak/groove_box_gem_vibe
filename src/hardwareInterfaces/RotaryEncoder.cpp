@@ -1,52 +1,56 @@
 #include "../../include/hardwareInterfaces/RotaryEncoder.h"
 #include "../../include/hardwareInterfaces/Button.h"
-#include <cassert>
 //compiel
 
 void RotaryEncoder::processBlockwise(){
-	for(auto& button: buttons) button.processBlockwise();
-	
-	assert(buttons.size() > 2);
-	if(buttons.at(2).pressed()){
+	if(!initialized || context == nullptr){
+		event = RotaryEncoderEvent::None;
+		return;
+	}
+
+	pushButton.processBlockwise();
+	if(pushButton.pressed()){
 		event = RotaryEncoderEvent::Push;
 		return; //TODO: if i get a push and a left/right in the same block something gets lost.
 	}
-	assert(pending.size() > 0);
-	const bool isPendingZeroFalse = pending.at(0) == false;
-	assert(pending.size() > 1);
-	const bool isPendingOneFalse = pending.at(1) == false;
-	if(isPendingZeroFalse && isPendingOneFalse){
-		assert(buttons.size() > 0);
-		if(buttons.at(0).pressed()){
-			assert(pending.size() > 0);
-			pending.at(0) = true;
-		} else {
-			assert(buttons.size() > 1);
-			if(buttons.at(1).pressed()){
-				assert(pending.size() > 1);
-				pending.at(1) = true;
-			}
-		}
-	}
-	assert(buttons.size() > 0);
-	assert(pending.size() > 1);
-	if(buttons.at(0).pressed() && pending.at(1)){
-		for(int i = 0; i < 2; i++){
-			assert(static_cast<size_t>(i) < pending.size());
-			pending.at(i) = false;
-		}
-		event = RotaryEncoderEvent::Left;
+
+	const uint8_t a = (digitalRead(context, 0, pinA) == LOW) ? 1 : 0;
+	const uint8_t b = (digitalRead(context, 0, pinB) == LOW) ? 1 : 0;
+	const uint8_t currentState = static_cast<uint8_t>((a << 1) | b);
+
+	// On startup or after re-init, seed previous state to avoid a bogus step.
+	if(!hasPrevState){
+		prevState = currentState;
+		hasPrevState = true;
+		event = RotaryEncoderEvent::None;
 		return;
 	}
-	assert(buttons.size() > 1);
-	assert(pending.size() > 0);
-	if(buttons.at(1).pressed() && pending.at(0)){
-		for(int i = 0; i < 2; i++){
-			assert(static_cast<size_t>(i) < pending.size());
-			pending.at(i) = false;
+
+	// Valid Gray-code transitions only. Invalid jumps (bounce/noise) are ignored.
+	static const int8_t kTransitionDelta[16] = {
+		0,  1, -1,  0,
+		-1, 0,  0,  1,
+		1,  0,  0, -1,
+		0, -1,  1,  0
+	};
+
+	const uint8_t transition = static_cast<uint8_t>((prevState << 2) | currentState);
+	prevState = currentState;
+	const int delta = kTransitionDelta[transition];
+
+	if(delta != 0){
+		quarterSteps += delta;
+		if(quarterSteps >= 4){
+			quarterSteps = 0;
+			event = RotaryEncoderEvent::Left;
+			return;
 		}
-		event = RotaryEncoderEvent::Right;
-		return;
+		if(quarterSteps <= -4){
+			quarterSteps = 0;
+			event = RotaryEncoderEvent::Right;
+			return;
+		}
 	}
+
 	event = RotaryEncoderEvent::None;
 }

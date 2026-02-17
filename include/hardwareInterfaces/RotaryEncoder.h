@@ -1,6 +1,6 @@
 #pragma once
 //compiel
-#include <vector>
+#include <cstdint>
 #include "Button.h"
 
 //TODO: there is a problem that i cant seem to fix: wenn ich den knopf drehe kommt bei kleiner drehung ein pressed signal und dann nach dem hüpfen zur nächsten position das andere pressed signal. manchmal drehe ich zu weit und dann kommt
@@ -17,8 +17,18 @@ enum class RotaryEncoderEvent {
 class RotaryEncoder {
 public:
 	RotaryEncoder(){}
-	RotaryEncoder(BelaContext* context, int index, int pinA, int pinB, int pinS): index(index){
-		buttons = {Button(context, pinA), Button(context, pinB), Button(context, pinS)};
+	RotaryEncoder(BelaContext* context, int index, int pinA, int pinB, int pinS) { init(context, index, pinA, pinB, pinS); }
+	void init(BelaContext* inContext, int inIndex, int inPinA, int inPinB, int pinS){
+		context = inContext;
+		index = inIndex;
+		pinA = inPinA;
+		pinB = inPinB;
+		pushButton = Button(inContext, pinS);
+		initialized = (inContext != nullptr);
+		prevState = 0;
+		hasPrevState = false;
+		quarterSteps = 0;
+		event = RotaryEncoderEvent::None;
 	}
 	
     void processBlockwise();
@@ -28,8 +38,14 @@ public:
     RotaryEncoderEvent getEvent() {return event;}
     
 private:
+	BelaContext* context = nullptr;
+	int pinA = 0;
+	int pinB = 0;
 	int index = 0;
-	std::vector<bool> pending = {false, false}; // left right
-	std::vector<Button> buttons;
+	Button pushButton;
+	bool initialized = false;
+	uint8_t prevState = 0; // packed AB state: (A << 1) | B
+	bool hasPrevState = false;
+	int quarterSteps = 0;  // accumulate valid quadrature transitions
 	RotaryEncoderEvent event = RotaryEncoderEvent::None;
 };

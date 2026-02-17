@@ -44,7 +44,7 @@ void BelaInterface::printPotentiometerValues(){
 
 void BelaInterface::newEncoder(BelaContext* context, int index, int pinA, int pinB, int pinS){
 	assert(context != nullptr);
-	rotaryEncoders.push_back(RotaryEncoder(context, index, pinA, pinB, pinS));
+	rotaryEncoders.emplace_back(context, index, pinA, pinB, pinS);
 	DEBUG_RT_PRINTF("  Rotary encoder %d pins A:%d B:%d S:%d\n", index, pinA, pinB, pinS);
 }
 
@@ -60,6 +60,7 @@ BelaInterface::BelaInterface(ResourceManager& resourceManager): resourceManager(
 		buttons.push_back(Button(context, pin));
 		//DEBUG_RT_PRINTF("  Button pin %d registered\n", pin);
 	}
+	rotaryEncoders.reserve(static_cast<size_t>(dm.numberOfRotEncs));
 	for(int i = 0; i < dm.numberOfRotEncs; i++){
 		assert(dm.rotEncPins.size() > static_cast<size_t>(i));
 		auto& encoderPins = dm.rotEncPins.at(i);
