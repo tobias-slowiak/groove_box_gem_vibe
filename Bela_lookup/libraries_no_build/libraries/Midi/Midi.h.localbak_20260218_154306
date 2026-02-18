@@ -1,10 +1,10 @@
 #pragma once
+#include <Bela.h>
 #include <vector>
 #include <string>
-#include <AuxTaskNonRT.h>
-#include <RtThread.h>
-#include <tuple>
-#include <Bela.h>
+#ifdef XENOMAI_SKIN_native
+#include <native/pipe.h>
+#endif
 
 typedef unsigned char midi_byte_t;
 
@@ -146,7 +146,6 @@ private:
 	void* callbackArg;
 	void (*sysexCallback)(midi_byte_t,void*);
 	void* sysexCallbackArg;
-	void postSysex(midi_byte_t);
 public:
 	MidiParser(){
 		waitingForStatus = true;
@@ -215,7 +214,7 @@ public:
 	 * first argument.
 	 *
 	 * @param newCallback the callback function.
-	 * @param arg the second argument to be passed to the callback function.
+	 * @param arg the third argument to be passed to the callback function.
 	 *
 	 */
 	void setSysexCallback(void (*newCallback)(midi_byte_t, void*), void* arg=nullptr){
@@ -320,14 +319,14 @@ public:
 	/**
 	 * Open the specified input Midi port and start reading from it.
 	 * @param port Midi port to open
-	 * @return 1 on success or a negative error code on failure
+	 * @return 1 on success, -1 on failure
 	 */
 	int readFrom(const char* port);
 
 	/**
 	 * Open the specified output Midi port and prepares to write to it.
 	 * @param port Midi port to open
-	 * @return 1 on success or a negative error code on failure
+	 * @return 1 on success, -1 on failure
 	 */
 	int writeTo(const char* port);
 
@@ -374,32 +373,10 @@ public:
 	MidiParser* getMidiParser();
 	virtual ~Midi();
 
-	bool isInputEnabled() const;
+	bool isInputEnabled();
 
-	bool isOutputEnabled() const;
+	bool isOutputEnabled();
 
-	struct Port {
-		std::string name;
-		std::string desc;
-		int card;
-		int device;
-		int sub;
-		bool hasInput;
-		bool hasOutput;
-		bool operator== (const Port& o) const {
-			return name == o.name &&
-				desc == o.desc &&
-				card == o.card &&
-				device == o.device &&
-				sub == o.sub &&
-				hasInput == o.hasInput &&
-				hasOutput == o.hasOutput;
-		}
-	};
-	const Port& getInputPort() const { return inPortFull; }
-	const Port& getOutputPort() const { return outPortFull; }
-	static std::vector<Port> listAllPorts();
-	static bool exists(const std::string& port);
 	/**
 	 * Opens all the existing MIDI ports, in the same order returned by the filesystem or Alsa.
 	 * Ports open with this method should be closed with destroyPorts()
@@ -411,27 +388,32 @@ public:
 	 */
 	static void destroyPorts(std::vector<Midi*>& ports);
 private:
+	char defaultPort[9];
 	std::string inPort;
 	std::string outPort;
-	Port inPortFull;
-	Port outPortFull;
 	int _getInput();
 	int attemptRecoveryRead();
-	static void readInputLoopStatic(void* obj);
-	void readInputLoop();
+	static void readInputLoop(void* obj);
 	int attemptRecoveryWrite();
-	void doWriteOutput(const void* data, int size);
+	static void writeOutputLoop(void* obj);
 	snd_rawmidi_t *alsaIn,*alsaOut;
 	std::vector<midi_byte_t> inputBytes;
 	unsigned int inputBytesWritePointer;
 	unsigned int inputBytesReadPointer;
+	std::vector<midi_byte_t> outputBytes;
 	MidiParser* inputParser;
 	bool parserEnabled;
 	bool inputEnabled;
 	bool outputEnabled;
-	volatile bool shouldStop;
-	RtThread midiInputThread;
-	AuxTaskNonRT* midiOutputTask;
-	std::string inId;
-	std::string outId;
+	AuxiliaryTask midiInputTask;
+	AuxiliaryTask midiOutputTask;
+	char* inId;
+	char* outId;
+	char* outPipeName;
+#ifdef XENOMAI_SKIN_native
+	RT_PIPE outPipe;
+#endif
+#ifdef XENOMAI_SKIN_posix
+	int sock;
+#endif
 };
