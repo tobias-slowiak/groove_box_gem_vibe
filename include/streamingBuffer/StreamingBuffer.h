@@ -77,6 +77,8 @@ public:
 
     StreamingBufferIterator operator++(int);    // post-increment
 
+    bool seek(size_t frameIndex);
+
     void flush();
 
     void release();

@@ -10,6 +10,7 @@ void ResourceManager::processBlockwise(){
     assert(keyInstrumentSamplePack);
     keyInstrumentSamplePack->processBlockwise();
     drumSamplePack->processBlockwise();
+    samplers->processBlockwise();
     metronome->processBlockwise();
     ui->processBlockwise();
     recorder->processBlockwise();

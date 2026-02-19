@@ -66,6 +66,10 @@ void InputHandler::handleMessage(InterfaceMessage& message){
 				rm.getSignalRouter().setOutput(Signal::Metronome, Output::Main2, !rm.getSignalRouter().getOutput(Signal::Metronome, Output::Main2));
                 return;
             }
+			if(message.id == deviceMap.buttonSamplerRecord){
+				ui.samplerToggleRecord();
+				return;
+			}
 			break;
 		case InterfaceMessageType::RotEncSignal:
 			if(event == RotaryEncoderEvent::Right)
@@ -102,6 +106,9 @@ void InputHandler::handleMessage(IMidiChannelMessage& message){
 			}
 			if(deviceMap.midiLooperEraseByte1 == message.getDataByte(0) && message.getDataByte(1) > 0){
 				rm.getLoopers().erase();
+			}
+			if(deviceMap.midiSamplerRecordByte1 == message.getDataByte(0) && message.getDataByte(1) > 0){
+				ui.samplerToggleRecord();
 			}
 
 			break;

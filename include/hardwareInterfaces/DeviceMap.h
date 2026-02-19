@@ -22,6 +22,7 @@ public:
 	int midiControlChange = 0xB0;
 
 	int midiRecordByte1 = 117;
+	int midiSamplerRecordByte1 = 76;
 
 	int midiSetDrumModeByte1 = 0x03;
 	int midiSetDrumModeByte2 = 0x01;
@@ -44,6 +45,7 @@ public:
 	int buttonMicToggle;
 	int buttonMetronomeState;
 	int buttonFIVE;
+	int buttonSamplerRecord = 6;
 	int numberOfPotentiometers;
 	bool reversePottis;
 	int outputGainPotentiometerIndex;

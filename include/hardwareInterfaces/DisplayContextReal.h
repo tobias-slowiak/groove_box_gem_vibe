@@ -40,6 +40,12 @@ public:
 	std::string getLine(int displayNumber, int lineNumber) override;
 	
 	void setProgress(int displayNumber, float percentage) override;
+
+	void setWaveformOverlay(bool enabled,
+						   const std::vector<float>& waveform,
+						   float sliceStartNormalized,
+						   float sliceEndNormalized,
+						   bool editStartBoundary) override;
     
     ResourceManager& getResourceManager() { return resourceManager; }
 		
@@ -72,6 +78,11 @@ private:
 
     std::vector<std::vector<TextFrame>> textFrames;
     std::vector<ScrollBar> scrollBars;
+    bool waveformOverlayEnabled = false;
+    std::vector<float> waveform;
+    float waveformSliceStartNormalized = 0.0f;
+    float waveformSliceEndNormalized = 1.0f;
+    bool waveformEditStartBoundary = true;
 
     //render Task only
     std::vector<std::vector<std::string>> r_lines;
@@ -79,6 +90,11 @@ private:
     float r_progress = 0.0f;
     std::vector<std::vector<TextFrame>> r_textFrames;
     std::vector<ScrollBar> r_scrollBars;
+    bool r_waveformOverlayEnabled = false;
+    std::vector<float> r_waveform;
+    float r_waveformSliceStartNormalized = 0.0f;
+    float r_waveformSliceEndNormalized = 1.0f;
+    bool r_waveformEditStartBoundary = true;
 
     
 };

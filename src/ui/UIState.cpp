@@ -598,6 +598,146 @@ void removeSelectedEffectOnCurrentTarget(UIStateContext& ctxt){
                                 []() {}
                             }
                         }});
+    //////--------------SAMPLER PARAMS ------------------------------
+    paramLines.push_back({"Sampler",
+                        []{return "";},
+                                {
+                                    []() {},
+                                    []() {},
+                                    []() {}
+                                }
+                            });
+    subParamLines.push_back({
+                        {"Sample",
+                        [&uiRef]() {
+                            Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                            uiRef.ctxt.samplerIndex = samplers.clampSamplerSelection(uiRef.ctxt.samplerIndex);
+                            int sampleIndex = uiRef.ctxt.samplerIndex;
+                            if(sampleIndex >= samplers.getNumSamples()){
+                                return std::string("New");
+                            }
+                            if(!samplers.hasSampleAudio(sampleIndex)){
+                                return std::string("Empty");
+                            }
+                            return std::to_string(sampleIndex + 1) + "/" + std::to_string(samplers.getNumSamples());
+                        },
+                            {
+                                [&uiRef]() {
+                                    Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                                    uiRef.ctxt.samplerIndex = samplers.clampSamplerSelection(uiRef.ctxt.samplerIndex + 1);
+                                    uiRef.ctxt.sliceIndex = samplers.clampSliceSelection(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex);
+                                },
+                                [&uiRef]() {
+                                    Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                                    uiRef.ctxt.samplerIndex = samplers.clampSamplerSelection(uiRef.ctxt.samplerIndex - 1);
+                                    uiRef.ctxt.sliceIndex = samplers.clampSliceSelection(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex);
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Record",
+                        [&uiRef]() {
+                            Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                            if(samplers.isRecording(uiRef.ctxt.samplerIndex)) return std::string("Rec");
+                            if(samplers.isRecording()) return std::string("Busy");
+                            return std::string("Idle");
+                        },
+                            {
+                                []() {},
+                                []() {},
+                                [&uiRef]() { uiRef.samplerToggleRecord(); }
+                            }
+                        },
+                        {"AutoN",
+                        [&uiRef]() { return std::to_string(uiRef.ctxt.numberOfSliceForAutoSlice); },
+                            {
+                                [&uiRef]() { uiRef.ctxt.numberOfSliceForAutoSlice = std::min(32, uiRef.ctxt.numberOfSliceForAutoSlice + 1); },
+                                [&uiRef]() { uiRef.ctxt.numberOfSliceForAutoSlice = std::max(1, uiRef.ctxt.numberOfSliceForAutoSlice - 1); },
+                                []() {}
+                            }
+                        },
+                        {"Auto",
+                        []() { return std::string("push"); },
+                            {
+                                []() {},
+                                []() {},
+                                [&uiRef]() {
+                                    Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                                    samplers.autoSlice(uiRef.ctxt.samplerIndex, uiRef.ctxt.numberOfSliceForAutoSlice);
+                                    uiRef.ctxt.sliceIndex = samplers.clampSliceSelection(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex);
+                                }
+                            }
+                        },
+                        {"Slice",
+                        [&uiRef]() {
+                            Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                            int numSlices = samplers.getNumSlices(uiRef.ctxt.samplerIndex);
+                            if(numSlices <= 0) return std::string("-");
+                            uiRef.ctxt.sliceIndex = samplers.clampSliceSelection(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex);
+                            return std::to_string(uiRef.ctxt.sliceIndex + 1) + "/" + std::to_string(numSlices);
+                        },
+                            {
+                                [&uiRef]() {
+                                    Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                                    if(samplers.getNumSlices(uiRef.ctxt.samplerIndex) > 0){
+                                        uiRef.ctxt.sliceIndex = samplers.clampSliceSelection(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex + 1);
+                                    }
+                                },
+                                [&uiRef]() {
+                                    Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                                    if(samplers.getNumSlices(uiRef.ctxt.samplerIndex) > 0){
+                                        uiRef.ctxt.sliceIndex = samplers.clampSliceSelection(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex - 1);
+                                    }
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Pitch",
+                        [&uiRef]() {
+                            Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                            if(samplers.getNumSlices(uiRef.ctxt.samplerIndex) <= 0) return std::string("-");
+                            float pitch = samplers.getSlicePitchSemitones(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex);
+                            return std::to_string(pitch);
+                        },
+                            {
+                                [&uiRef]() {
+                                    uiRef.ctxt.rm.getSamplers().adjustSlicePitchSemitones(
+                                        uiRef.ctxt.samplerIndex,
+                                        uiRef.ctxt.sliceIndex,
+                                        0.5f);
+                                },
+                                [&uiRef]() {
+                                    uiRef.ctxt.rm.getSamplers().adjustSlicePitchSemitones(
+                                        uiRef.ctxt.samplerIndex,
+                                        uiRef.ctxt.sliceIndex,
+                                        -0.5f);
+                                },
+                                []() {}
+                            }
+                        },
+                        {"KeyMode",
+                        [&uiRef]() { return uiRef.ctxt.rm.getSamplers().getKeyboardModeName(); },
+                            {
+                                [&uiRef]() { uiRef.ctxt.rm.getSamplers().cycleKeyboardMode(1); },
+                                [&uiRef]() { uiRef.ctxt.rm.getSamplers().cycleKeyboardMode(-1); },
+                                []() {}
+                            }
+                        },
+                        {"Manual",
+                        [&uiRef]() {
+                            Samplers& samplers = uiRef.ctxt.rm.getSamplers();
+                            if(samplers.getNumSlices(uiRef.ctxt.samplerIndex) <= 0) return std::string("-");
+                            int start = static_cast<int>(100.0f * samplers.getSliceStartNormalized(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex));
+                            int end = static_cast<int>(100.0f * samplers.getSliceEndNormalized(uiRef.ctxt.samplerIndex, uiRef.ctxt.sliceIndex));
+                            std::string boundary = uiRef.ctxt.editSliceStartBoundary ? "S" : "E";
+                            return boundary + ":" + std::to_string(start) + "-" + std::to_string(end);
+                        },
+                            {
+                                []() {},
+                                []() {},
+                                []() {}
+                            }
+                        }});
     //////--------------RECORDER PARAMS ------------------------------
     paramLines.push_back({"Recorder",  //Label
                         []{return "";}, //Value

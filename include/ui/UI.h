@@ -60,6 +60,7 @@ struct UIStateContext {
 	int samplerIndex = 0;
 	int sliceIndex = 0;
 	int numberOfSliceForAutoSlice = 2;
+	bool editSliceStartBoundary = true;
 	size_t numberOfBarsForLoopers = 1;
 	bool triggerOffInDrumMode = false; //TODO: maybe make a dedicated drum class that handles this?
 	int effectsTargetIndex = 0;
@@ -92,6 +93,7 @@ public:
 
 	void masterTogglePlay();
 	void masterToggleRecord();
+	void samplerToggleRecord();
 
 	void processBlockwise();
 	void updateDisplay();
@@ -104,6 +106,9 @@ public:
 
 private:
 	friend struct UIState;
+	bool isManualSliceEditActive() const;
+	void moveManualSliceBoundary(int direction);
+	void toggleManualSliceBoundarySelection();
 	bool updateDisplayFlag = false;
 	UIStateContext ctxt;
 	std::vector<UIState> states;

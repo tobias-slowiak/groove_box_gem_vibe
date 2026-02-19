@@ -8,4 +8,9 @@ struct DisplayMessage{
     float progress;
     std::vector<std::vector<TextFrame>> textFrames;
     std::vector<ScrollBar> scrollBars;
+    bool waveformOverlayEnabled = false;
+    std::vector<float> waveform;
+    float waveformSliceStartNormalized = 0.0f;
+    float waveformSliceEndNormalized = 1.0f;
+    bool waveformEditStartBoundary = true;
 };

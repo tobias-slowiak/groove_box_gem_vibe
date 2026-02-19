@@ -41,6 +41,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		buttonMicToggle = 3;
 		buttonMetronomeState = 4;
 		buttonFIVE = 5;
+		buttonSamplerRecord = 6;
 		numberOfPotentiometers = 8;
 		reversePottis = true;
 		outputGainPotentiometerIndex = 0;
@@ -73,6 +74,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		buttonMicToggle = 3;
 		buttonMetronomeState = 4;
 		buttonFIVE = 5;
+		buttonSamplerRecord = 6;
 		numberOfPotentiometers = 8;
 		reversePottis = true;
 		outputGainPotentiometerIndex = 0;
@@ -100,6 +102,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 	
 		midiLooperUndoByte1 = 77;
 		midiLooperEraseByte1 = 78;
+		midiSamplerRecordByte1 = 76;
 		
 		volumeControlToLooper = {
 		    {21, 0},
@@ -178,6 +181,7 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 
 		midiLooperUndoByte1 = 77;
 		midiLooperEraseByte1 = 116;
+		midiSamplerRecordByte1 = 76;
 
 		volumeControlToLooper = {
 		    {21, 0},

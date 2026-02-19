@@ -109,7 +109,7 @@ float SignalRouter::process(int n)
     }
     inputFrames[(int)Signal::Loopers] = allLoopersEffects.processSample(inputFrames[(int)Signal::Loopers]);
     inputFrames[(int)Signal::Loopers] *= mixer.getGain(GainId::Looper);
-    //inputFrames[(int)Signal::Samplers] = mixer.getGain(GainId::Sampler) * samplers.process(samplerInputFrame);
+    inputFrames[(int)Signal::Samplers] = mixer.getGain(GainId::Sampler) * samplers.process(samplerInputFrame);
     // ------------------------ Mix to Outputs
     float mainOutMix = 0.0f;
     for(int outputIndex = 0; outputIndex < static_cast<int>(Output::COUNT); ++outputIndex) {

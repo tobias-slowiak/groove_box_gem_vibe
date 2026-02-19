@@ -36,8 +36,13 @@ public:
 	virtual std::string getLine(int, int) = 0;
 	
 	virtual void setProgress(int, float) = 0;
+
+	virtual void setWaveformOverlay(bool enabled,
+								   const std::vector<float>& waveform,
+								   float sliceStartNormalized,
+								   float sliceEndNormalized,
+								   bool editStartBoundary) = 0;
 		
 	virtual void renderDisplay() = 0;
 	
 };
-

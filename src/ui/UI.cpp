@@ -23,6 +23,11 @@ UI::UI(ResourceManager& resourceManager)
 }
 
 void UI::menuUp(int displayId){
+	if(displayId == 0 && isManualSliceEditActive()){
+		moveManualSliceBoundary(+1);
+		updateDisplay();
+		return;
+	}
 	if(displayId == 0){
 		if(state.paramLineInEditMode){
 			state.paramLines[state.currentParamLineIndex].manipulator.increase();
@@ -45,6 +50,11 @@ void UI::menuUp(int displayId){
 }
 
 void UI::menuDown(int displayId){
+	if(displayId == 0 && isManualSliceEditActive()){
+		moveManualSliceBoundary(-1);
+		updateDisplay();
+		return;
+	}
 	if(displayId == 0){
 		if(state.paramLineInEditMode){
 			state.paramLines[state.currentParamLineIndex].manipulator.decrease();
@@ -67,6 +77,11 @@ void UI::menuDown(int displayId){
 }
 
 void UI::menuPush(int displayId){
+	if(displayId == 0 && isManualSliceEditActive()){
+		toggleManualSliceBoundarySelection();
+		updateDisplay();
+		return;
+	}
 	if(displayId == 0){
 		if(VEC_AT(state.paramLines, state.currentParamLineIndex).value() == ""){
 			//these parameters only open the subparameter set - nothing to edit here
@@ -91,6 +106,12 @@ void UI::setLooperGain(int looperId, float value){
 }
 
 void UI::triggerVoice(int note, int velocity, bool melodicMode){
+		Samplers& samplers = ctxt.rm.getSamplers();
+		if(samplers.isKeyboardPlaybackEnabled()){
+			if(samplers.triggerNoteOn(note, velocity, ctxt.samplerIndex, ctxt.sliceIndex)){
+				return;
+			}
+		}
 		if(melodicMode){
 			ctxt.rm.getKeyInstrumentSamplePack().triggerVoice(note, velocity, true, 1.0f);
 		}else{
@@ -99,6 +120,11 @@ void UI::triggerVoice(int note, int velocity, bool melodicMode){
 }
 
 void UI::triggerOff(int note, bool melodicMode){
+	Samplers& samplers = ctxt.rm.getSamplers();
+	if(samplers.isKeyboardPlaybackEnabled()){
+		samplers.triggerNoteOff(note);
+		return;
+	}
 	if(melodicMode){
 		ctxt.rm.getKeyInstrumentSamplePack().triggerOff(note);
 	}else{
@@ -120,6 +146,12 @@ void UI::masterTogglePlay(){
 }
 void UI::masterToggleRecord(){
 	//TODO
+}
+
+void UI::samplerToggleRecord(){
+	ctxt.samplerIndex = ctxt.rm.getSamplers().clampSamplerSelection(ctxt.samplerIndex);
+	ctxt.rm.getSamplers().toggleRecording(ctxt.samplerIndex);
+	updateDisplay();
 }
 
 
@@ -199,6 +231,14 @@ void UI::renderDisplay(){
 	for(int displayId = 0; displayId < 2; displayId++){
 		VEC_AT(textFrames, displayId).push_back(TextFrame{VEC_AT(frameStartChars, displayId), frameLine});
 	}
+	if(isManualSliceEditActive()){
+		const std::vector<float>& waveform = ctxt.rm.getSamplers().getWaveformPreview(ctxt.samplerIndex, 128);
+		float startNorm = ctxt.rm.getSamplers().getSliceStartNormalized(ctxt.samplerIndex, ctxt.sliceIndex);
+		float endNorm = ctxt.rm.getSamplers().getSliceEndNormalized(ctxt.samplerIndex, ctxt.sliceIndex);
+		ctxt.rm.getDisplayContext().setWaveformOverlay(true, waveform, startNorm, endNorm, ctxt.editSliceStartBoundary);
+	} else {
+		ctxt.rm.getDisplayContext().setWaveformOverlay(false, {}, 0.0f, 1.0f, true);
+	}
 	ctxt.rm.getDisplayContext().setLines(liness, textFrames, scrollBars);
 }
 
@@ -221,4 +261,36 @@ void UI::drumKeySwitch(){
 
 void UI::micToggle(){
 	//TODO
+}
+
+bool UI::isManualSliceEditActive() const{
+	if(!state.subParamLineInEditMode){
+		return false;
+	}
+	if(state.currentSubParamSetIndex < 0 ||
+	   state.currentSubParamSetIndex >= static_cast<int>(state.subParamLines.size())){
+		return false;
+	}
+	const std::vector<UIParamLine>& subLines = VEC_AT(state.subParamLines, state.currentSubParamSetIndex);
+	if(state.currentSubParamLineIndex < 0 ||
+	   state.currentSubParamLineIndex >= static_cast<int>(subLines.size())){
+		return false;
+	}
+	return VEC_AT(subLines, state.currentSubParamLineIndex).label == "Manual";
+}
+
+void UI::moveManualSliceBoundary(int direction){
+	const int stepFrames = ctxt.rm.getSamplers().getManualEditStepFrames(ctxt.samplerIndex);
+	const int signedStep = direction >= 0 ? stepFrames : -stepFrames;
+	ManualSliceBoundary boundary = ctxt.editSliceStartBoundary ?
+		ManualSliceBoundary::Start : ManualSliceBoundary::End;
+	ctxt.rm.getSamplers().moveSliceBoundary(
+		ctxt.samplerIndex,
+		ctxt.sliceIndex,
+		boundary,
+		signedStep);
+}
+
+void UI::toggleManualSliceBoundarySelection(){
+	ctxt.editSliceStartBoundary = !ctxt.editSliceStartBoundary;
 }

@@ -39,6 +39,12 @@ public:
 	}
 	
 	void setProgress(int displayNumber, float percentage) override;
+
+	void setWaveformOverlay(bool,
+						   const std::vector<float>&,
+						   float,
+						   float,
+						   bool) override {}
 		
 	void renderDisplay() override;
 	

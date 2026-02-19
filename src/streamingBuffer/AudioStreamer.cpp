@@ -17,6 +17,17 @@ AudioStreamer::AudioStreamer(StreamingBuffer& streamingBuffer)
 
 
 void AudioStreamer::sendStreamChunkMessage(SampleIdentifier sampleIdentifier, int chunkIndex, std::vector<int>& chunkIndicesInBuffer){
+    if(chunkIndex < 0){
+        return;
+    }
+    const size_t sampleLengthInFrames = parent.getSampleLength(sampleIdentifier);
+    if(sampleLengthInFrames == 0){
+        return;
+    }
+    const int maxChunkIndex = static_cast<int>((sampleLengthInFrames - 1) / parent.chunkLength);
+    if(chunkIndex > maxChunkIndex){
+        return;
+    }
     int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, chunkIndex);
     if(chunkIndexInBuffer == CHUNK_INVALID)
         chunkIndexInBuffer = parent.assignToFreeChunk(sampleIdentifier, chunkIndex, chunkIndicesInBuffer);
@@ -32,17 +43,18 @@ void AudioStreamer::sendFlushChunksMessages(SampleIdentifier sampleIdentifier){ 
     std::vector<int>& chunkIndicesInBuffer = parent.getChunkIndicesInBuffer(sampleIdentifier);
     assert(!chunkIndicesInBuffer.empty() && "AudioStreamer::flushToDisk empty chunkIndicesInBuffer");
     int sampleLength = parent.getSampleLength(sampleIdentifier);
-    
-    StreamingMessage outMsg{StreamingMessageType::FlushInfo, sampleIdentifier, sampleLength, sampleLength};
+
+    const int numberOfChunksToFlush =
+        static_cast<int>((sampleLength + parent.chunkLength - 1) / parent.chunkLength);
+    StreamingMessage outMsg{
+        StreamingMessageType::FlushInfo,
+        sampleIdentifier,
+        sampleLength,
+        numberOfChunksToFlush};
     flushTask.pushMessage(TaskMessageTarget::TaskThread, outMsg);
 
-    int chunkIndex = 0;
-    while(chunkIndex < static_cast<int>(chunkIndicesInBuffer.size())){
+    for(int chunkIndex = 0; chunkIndex < numberOfChunksToFlush; ++chunkIndex){
         int chunkIndexInBuffer = VEC_AT(chunkIndicesInBuffer, chunkIndex);
-        //TODO: the followign has to trigger on end_of_sample being later than previously.
-        if(chunkIndex * parent.chunkLength >= static_cast<int>(sampleLength)){
-            return;
-        }
         if(chunkIndexInBuffer == CHUNK_INVALID){
             std::string errMsg = "AudioStreamer::flushToDisk trying to flush uninitialized chunk for sample " + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second)
             + " chunk index " + std::to_string(chunkIndex) + " with sampleLength " + std::to_string(sampleLength) + " and chunkLength " + std::to_string(parent.chunkLength);
@@ -51,7 +63,6 @@ void AudioStreamer::sendFlushChunksMessages(SampleIdentifier sampleIdentifier){ 
         assert(chunkIndexInBuffer >= 0 && static_cast<size_t>(chunkIndexInBuffer) < parent.chunks.size() && "AudioStreamer::flushToDisk chunkIndexInBuffer out of range");
         StreamingMessage outMsg{StreamingMessageType::FlushChunk, sampleIdentifier, chunkIndex, chunkIndexInBuffer};
         flushTask.pushMessage(TaskMessageTarget::TaskThread, outMsg);
-        chunkIndex++;
     }
 }
 
@@ -67,10 +78,13 @@ void AudioStreamer::workStreamMessage(StreamingMessage msg){ //stream thread onl
         size_t sdFileReadStartIndex = chunkIndex * parent.chunkLength;
         size_t sdFileReadEndIndex = sdFileReadStartIndex + parent.chunkLength;
         size_t sampleLengthInFrames = parent.getSampleLength(msg.sampleIdentifier);
-        if(sdFileReadStartIndex == sampleLengthInFrames){return;} //sample is exact multiple of chunkLength and everything has already been loaded 
+        if(sdFileReadStartIndex >= sampleLengthInFrames){
+            return;
+        }
         if(sdFileReadEndIndex > sampleLengthInFrames){
             sdFileReadEndIndex = sampleLengthInFrames;
-            for(size_t i = sdFileReadEndIndex - sdFileReadStartIndex; i < parent.chunkLength; i++){
+            const size_t framesToRead = sdFileReadEndIndex - sdFileReadStartIndex;
+            for(size_t i = framesToRead; i < parent.chunkLength; i++){
                 VEC_AT(s_streamBuffer, i) = END_OF_SAMPLE;
             }
         }
@@ -81,6 +95,11 @@ void AudioStreamer::workStreamMessage(StreamingMessage msg){ //stream thread onl
             }
             VEC_AT(parent.chunkStates, chunkIndexInBuffer).chunkReady.store(true, std::memory_order_release);
         } else {
+            // During flush, the file may not be finalized yet; skip this request and allow retries.
+            const int sampleInUseRes = parent.sampleInUse(msg.sampleIdentifier);
+            if(sampleInUseRes == FLUSH_EXISTS || sampleInUseRes == BOTH_EXIST){
+                return;
+            }
             throw std::runtime_error("AudioStreamer::workStreamMessage: failed to load sample" + parent.filename(msg.sampleIdentifier) + " sdfilereadstartindex = " + std::to_string(sdFileReadStartIndex) + " sdfilereadendindex = " + std::to_string(sdFileReadEndIndex) + "sampleLengthInFrames = " + std::to_string(sampleLengthInFrames));
         }
     }
@@ -107,7 +126,7 @@ void AudioStreamer::workFlushMessage(StreamingMessage msg){ //flush thread only
                 sampleLengthInFrames
             )
         );
-        f_numberOfFlushableChunks[msg.sampleIdentifier] = msg.chunkIndex;
+        f_numberOfFlushableChunks[msg.sampleIdentifier] = msg.chunkIndexInBuffer;
     }
     if(msg.type == StreamingMessageType::FlushChunk){
         //potential concurrent read, however not so bad since 1 the chunk is still prtected to will not be written to and 2 with only 1 core
@@ -141,6 +160,7 @@ void AudioStreamer::workFlushMessage(StreamingMessage msg){ //flush thread only
         writerIt->second.writeChunk(msg.chunkIndex * parent.chunkLength, f_flushBuffer, framesToWrite);
         if(msg.chunkIndex == f_numberOfFlushableChunks[msg.sampleIdentifier] - 1){
             f_wavWriters.erase(writerIt);
+            f_numberOfFlushableChunks.erase(msg.sampleIdentifier);
             StreamingMessage outMsg{StreamingMessageType::FlushComplete, msg.sampleIdentifier, ARBITRARY_VALUE, ARBITRARY_VALUE};
             flushTask.pushMessage(TaskMessageTarget::AudioThread, outMsg);
         }

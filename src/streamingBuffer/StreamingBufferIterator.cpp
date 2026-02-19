@@ -93,7 +93,8 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
         chunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, chunkIndex);
 
         if(type == SBIType::Read){
-            if(chunkIndex + streamingAdvanceInChunks <= sampleLength / parent.chunkLength){
+            const int maxChunkIndex = static_cast<int>((sampleLength - 1) / parent.chunkLength);
+            if(chunkIndex + streamingAdvanceInChunks <= maxChunkIndex){
                 int chunkIndexInBufferForStream = VEC_AT(*chunkIndicesInBuffer, chunkIndex + streamingAdvanceInChunks);
                 if(chunkIndexInBufferForStream == CHUNK_INVALID)
                     parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + streamingAdvanceInChunks, *chunkIndicesInBuffer);
@@ -116,6 +117,55 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
     return *this;
 }
 
+bool StreamingBufferIterator::seek(size_t frameIndex){
+    if(sampleIdentifier.first == ITERATOR_INVALID){
+        return false;
+    }
+    if(frameIndex >= sampleLength){
+        return false;
+    }
+
+    const int newChunkIndex = static_cast<int>(frameIndex / parent.chunkLength);
+    const size_t newIndexInChunk = frameIndex % parent.chunkLength;
+
+    int newChunkIndexInBuffer = VEC_AT(*chunkIndicesInBuffer, newChunkIndex);
+    if(type == SBIType::Read){
+        if(newChunkIndexInBuffer == CHUNK_INVALID){
+            parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, newChunkIndex, *chunkIndicesInBuffer);
+            return false;
+        }
+        ChunkState& chunkState = VEC_AT(parent.chunkStates, newChunkIndexInBuffer);
+        if(!chunkState.chunkReady.load(std::memory_order_acquire)){
+            parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, newChunkIndex, *chunkIndicesInBuffer);
+            return false;
+        }
+        const int maxChunkIndex = static_cast<int>((sampleLength - 1) / parent.chunkLength);
+        for(int i = 1; i <= streamingAdvanceInChunks; ++i){
+            const int prefetchChunkIndex = newChunkIndex + i;
+            if(prefetchChunkIndex > maxChunkIndex){
+                break;
+            }
+            const int prefetchChunkInBuffer = VEC_AT(*chunkIndicesInBuffer, prefetchChunkIndex);
+            if(prefetchChunkInBuffer == CHUNK_INVALID){
+                parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, prefetchChunkIndex, *chunkIndicesInBuffer);
+            }
+        }
+    }
+    if(type == SBIType::Write){
+        if(newChunkIndexInBuffer == CHUNK_INVALID){
+            newChunkIndexInBuffer = parent.assignToFreeChunk(sampleIdentifier, newChunkIndex, *chunkIndicesInBuffer);
+        }
+    }
+
+    chunkIndex = newChunkIndex;
+    indexInChunk = newIndexInChunk;
+    chunkIndexInBuffer = newChunkIndexInBuffer;
+    chunkStartPtr = VEC_AT(parent.chunks, chunkIndexInBuffer).data();
+    data = chunkStartPtr + indexInChunk;
+    index = frameIndex;
+    return true;
+}
+
 void StreamingBufferIterator::set(SampleIdentifier sampleIdentifier,
                                 std::vector<int>* chunkIndicesInBuffer,
                                 SBIType type,
@@ -125,6 +175,7 @@ void StreamingBufferIterator::set(SampleIdentifier sampleIdentifier,
     this->index = 0;
     this->chunkIndicesInBuffer = chunkIndicesInBuffer;
     this->type = type;
+    this->streamingAdvanceInChunks = std::max(0, streamingAdvanceInChunks);
     assert(this->sampleLength > 0 && "StreamingBufferIterator::set sampleLength must be > 0");
 
     this->chunkIndex = 0;
@@ -135,12 +186,14 @@ void StreamingBufferIterator::set(SampleIdentifier sampleIdentifier,
     this->data = chunkStartPtr;
     
     if(this->type == SBIType::Read){
-        for(int i = 0; i <= streamingAdvanceInChunks; i++){
-            if(chunkIndex + i >= chunkIndicesInBuffer->size())
+        const int maxChunkIndex = static_cast<int>((this->sampleLength - 1) / parent.chunkLength);
+        for(int i = 0; i <= this->streamingAdvanceInChunks; i++){
+            const int prefetchChunkIndex = chunkIndex + i;
+            if(prefetchChunkIndex > maxChunkIndex)
                 break;
-            int chunkIndexInBufferForStream = VEC_AT(*chunkIndicesInBuffer, chunkIndex + i);
+            int chunkIndexInBufferForStream = VEC_AT(*chunkIndicesInBuffer, prefetchChunkIndex);
             if(chunkIndexInBufferForStream == CHUNK_INVALID)
-                parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, chunkIndex + i, *chunkIndicesInBuffer);
+                parent.audioStreamer.sendStreamChunkMessage(sampleIdentifier, prefetchChunkIndex, *chunkIndicesInBuffer);
         }
     }
 }

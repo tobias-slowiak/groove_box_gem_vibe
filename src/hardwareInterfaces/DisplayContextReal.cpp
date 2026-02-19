@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
+#include <cmath>
 //compiel
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/DisplayContextReal.h"
@@ -113,6 +114,11 @@ void DisplayContextReal::sendTaskMessage(){
 	msg.progress = progress;
 	msg.textFrames = textFrames;
 	msg.scrollBars = scrollBars;
+    msg.waveformOverlayEnabled = waveformOverlayEnabled;
+    msg.waveform = waveform;
+    msg.waveformSliceStartNormalized = waveformSliceStartNormalized;
+    msg.waveformSliceEndNormalized = waveformSliceEndNormalized;
+    msg.waveformEditStartBoundary = waveformEditStartBoundary;
 	renderTask.pushMessage(TaskMessageTarget::TaskThread, msg);
 }
 
@@ -133,6 +139,18 @@ void DisplayContextReal::setProgress(int displayNumber, float percentage) {
 	sendTaskMessage();
 }
 
+void DisplayContextReal::setWaveformOverlay(bool enabled,
+                                            const std::vector<float>& waveform,
+                                            float sliceStartNormalized,
+                                            float sliceEndNormalized,
+                                            bool editStartBoundary){
+    waveformOverlayEnabled = enabled;
+    this->waveform = waveform;
+    waveformSliceStartNormalized = sliceStartNormalized;
+    waveformSliceEndNormalized = sliceEndNormalized;
+    waveformEditStartBoundary = editStartBoundary;
+}
+
 
 void DisplayContextReal::renderDisplay() {
 	for(int display = 0; display < 2; display++){
@@ -142,6 +160,45 @@ void DisplayContextReal::renderDisplay() {
 	    	u8g2->clearDisplay();
 	    }
 	    u8g2->clearBuffer();
+        if(display == 0 && r_waveformOverlayEnabled){
+            const int midY = SCREEN_HEIGHT / 2;
+            const int maxAmp = std::max(1, SCREEN_HEIGHT / 2 - 2);
+            if(!r_waveform.empty()){
+                for(int x = 0; x < SCREEN_WIDTH; ++x){
+                    size_t waveformIndex = 0;
+                    if(SCREEN_WIDTH > 1 && r_waveform.size() > 1){
+                        waveformIndex = (static_cast<size_t>(x) * (r_waveform.size() - 1)) / static_cast<size_t>(SCREEN_WIDTH - 1);
+                    }
+                    float value = VEC_AT(r_waveform, waveformIndex);
+                    value = std::max(-1.0f, std::min(1.0f, value));
+                    int amp = static_cast<int>(value * static_cast<float>(maxAmp));
+                    int y0 = midY;
+                    int y1 = midY - amp;
+                    int yMin = std::min(y0, y1);
+                    int height = std::max(1, std::abs(y1 - y0) + 1);
+                    u8g2->drawVLine(x, yMin, height);
+                }
+            }
+
+            int startX = static_cast<int>(r_waveformSliceStartNormalized * static_cast<float>(SCREEN_WIDTH - 1));
+            int endX = static_cast<int>(r_waveformSliceEndNormalized * static_cast<float>(SCREEN_WIDTH - 1));
+            startX = std::max(0, std::min(startX, SCREEN_WIDTH - 1));
+            endX = std::max(0, std::min(endX, SCREEN_WIDTH - 1));
+            if(endX < startX){
+                std::swap(startX, endX);
+            }
+
+            u8g2->drawFrame(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+            u8g2->drawVLine(startX, 0, SCREEN_HEIGHT);
+            u8g2->drawVLine(endX, 0, SCREEN_HEIGHT);
+
+            int markerX = r_waveformEditStartBoundary ? startX : endX;
+            markerX = std::max(1, std::min(markerX, SCREEN_WIDTH - 2));
+            u8g2->drawBox(markerX - 1, 0, 3, 5);
+            u8g2->sendBuffer();
+            continue;
+        }
+
 	    // Draw text lines
 	    assert(r_lines.size() > static_cast<size_t>(display));
 	    auto& displayLines = r_lines.at(display);
@@ -197,6 +254,11 @@ void DisplayContextReal::taskWorkMessage(std::string& taskName, DisplayMessage m
 		r_progress = msg.progress;
 		r_textFrames = msg.textFrames;
 		r_scrollBars = msg.scrollBars;
+        r_waveformOverlayEnabled = msg.waveformOverlayEnabled;
+        r_waveform = msg.waveform;
+        r_waveformSliceStartNormalized = msg.waveformSliceStartNormalized;
+        r_waveformSliceEndNormalized = msg.waveformSliceEndNormalized;
+        r_waveformEditStartBoundary = msg.waveformEditStartBoundary;
 		renderDisplay();
 		return;
 	}
