@@ -17,9 +17,94 @@ For this the u8g2 folder has to be copied to the project folder, after that it c
 files when outside the project folder even though the folder is specified in the make parameters.
 #>
 
-## Looging when running on boot
+## Logging when running on boot
 
-systemd is used to log everything when running on boot. all the output is stored in /opt/Bela/logs/instrument.log so I can look at error codes/failed asserts/etc. after using it in standalone mode.s
+Startup logging is configured through `bela_startup` with a wrapper script:
+
+- Wrapper script: `/usr/local/bin/bela_startup_with_filelog.sh`
+- systemd override: `/etc/systemd/system/bela_startup.service.d/override.conf`
+- Log folder: `/opt/Bela/logs/instrument`
+- File pattern: `/opt/Bela/logs/instrument/instrument_log_YYYY-MM-DD_HH-MM-SS.log`
+
+The wrapper keeps normal `journalctl` output and also writes each startup run into a dedicated timestamped file.
+
+### Check logs
+
+```bash
+journalctl -u bela_startup -b --no-pager
+ls -lt /opt/Bela/logs/instrument | head
+tail -n 200 /opt/Bela/logs/instrument/instrument_log_YYYY-MM-DD_HH-MM-SS.log
+```
+
+### Install or re-install on any Bela Gem (new board or after reset)
+
+1. SSH to the board:
+```bash
+ssh root@<BELA_IP>
+```
+
+2. Create the wrapper script:
+```bash
+cat >/usr/local/bin/bela_startup_with_filelog.sh <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+LOG_DIR="/opt/Bela/logs/instrument"
+mkdir -p "$LOG_DIR"
+
+TS="$(date +'%Y-%m-%d_%H-%M-%S')"
+LOG_FILE="${LOG_DIR}/instrument_log_${TS}.log"
+
+{
+  echo "===== bela_startup begin $(date -Is) ====="
+  echo "log_file=${LOG_FILE}"
+} | tee -a "$LOG_FILE"
+
+set +e
+/usr/bin/stdbuf -oL -eL /opt/Bela/bela_startup.sh 2>&1 | tee -a "$LOG_FILE"
+APP_RC=${PIPESTATUS[0]}
+set -e
+
+{
+  echo "===== bela_startup end $(date -Is) rc=${APP_RC} ====="
+} | tee -a "$LOG_FILE"
+
+exit "$APP_RC"
+EOF
+chmod +x /usr/local/bin/bela_startup_with_filelog.sh
+```
+
+3. Add the systemd override:
+```bash
+mkdir -p /etc/systemd/system/bela_startup.service.d
+cat >/etc/systemd/system/bela_startup.service.d/override.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/bela_startup_with_filelog.sh
+EOF
+```
+
+4. Reload and restart:
+```bash
+systemctl daemon-reload
+systemctl reset-failed bela_startup || true
+systemctl restart bela_startup
+```
+
+5. Verify:
+```bash
+systemctl --no-pager --full status bela_startup
+ls -lt /opt/Bela/logs/instrument | head
+```
+
+### Optional rollback
+
+```bash
+rm -f /etc/systemd/system/bela_startup.service.d/override.conf
+systemctl daemon-reload
+systemctl reset-failed bela_startup || true
+systemctl restart bela_startup
+```
 
 
 

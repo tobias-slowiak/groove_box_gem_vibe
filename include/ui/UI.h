@@ -106,10 +106,12 @@ public:
 
 private:
 	friend struct UIState;
+	bool isAnyInstrumentLoading() const;
 	bool isManualSliceEditActive() const;
 	void moveManualSliceBoundary(int direction);
 	void toggleManualSliceBoundarySelection();
 	bool updateDisplayFlag = false;
+	bool loadingIndicatorWasActive = false;
 	UIStateContext ctxt;
 	std::vector<UIState> states;
 	UIState& state;

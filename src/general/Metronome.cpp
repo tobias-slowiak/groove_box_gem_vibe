@@ -1,10 +1,13 @@
 
 #include "../../include/general/ResourceManager.h"
 #include "../../include/general/Metronome.h"
+#include <algorithm>
 
 int bpmToFramesPerBeat(float bpm, int sampleRate, int beatUnit) {
-    float res = (sampleRate * 60.0f) / bpm / (beatUnit / 4.0f);
-    return (int)res;
+    const float safeBpm = std::max(1.0f, bpm);
+    const float safeBeatUnit = std::max(1.0f, static_cast<float>(beatUnit));
+    float res = (sampleRate * 60.0f) / safeBpm / (safeBeatUnit / 4.0f);
+    return std::max(1, static_cast<int>(res));
 }
 
 
@@ -17,8 +20,8 @@ Metronome::Metronome(ResourceManager& resourceManager)
 }
 
 void Metronome::setBPM(float bpm) {
-    this->bpm = bpm;
-    framesPerBeat = bpmToFramesPerBeat(bpm, resourceManager.audioFramesPerSecond, beatUnit);
+    this->bpm = std::max(1.0f, bpm);
+    framesPerBeat = bpmToFramesPerBeat(this->bpm, resourceManager.audioFramesPerSecond, beatUnit);
 }
 
 void Metronome::setBeatsPerBar(int beatsPerBar) {
@@ -48,23 +51,22 @@ void Metronome::processBlockwise() {
 }
 
 float Metronome::process() {
-    bool beatchanged = false;
+    barStartedThisFrame = false;
     frameCounter++;
     if(frameCounter >= framesPerBeat) {
         frameCounter = 0; // Reset for new bar
         beatsElapsed++;
-        beatchanged = true;
         if(beatsElapsed >= beatsPerBar){
             if(samplePackSize == 1)
                 samplePack.triggerVoice(42, 64, false, 1.0f);
             else
                 samplePack.triggerVoice(44, 64, false, 1.0f);
             beatsElapsed = 0;
+            barStartedThisFrame = true;
             resourceManager.getUI().updateDisplay(); // if in UIstate loopers, update bar count
         } else {
             samplePack.triggerVoice(42, 64, false, 0.5f); //Click sound for main out
         }
     }
-    if(beatchanged)
     return samplePack.process();
 }

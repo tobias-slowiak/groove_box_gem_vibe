@@ -15,6 +15,7 @@ public:
     uint64_t getFrameCounter() { return frameCounter; }
     int getFramesPerBeat() {return framesPerBeat;}
     int getBeatsPerBar() { return beatsPerBar; }
+    bool didBarStartThisFrame() const { return barStartedThisFrame; }
     void setBeatsPerBar(int beatsPerBar);
     int getBeatUnit() { return beatUnit; }
     void setBeatUnit(int beatUnit);
@@ -35,4 +36,5 @@ private:
     int beatUnit = 4;
     int beatsElapsed = 0;
     int frameCounter;
+    bool barStartedThisFrame = false;
 };

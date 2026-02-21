@@ -21,13 +21,13 @@ void InputHandler::parseMessages(){
 	while(kParser.numAvailableMessages() > 0) {
 		IMidiChannelMessage* message = kParser.getNextChannelMessage();
 		if(!message) throw std::runtime_error("problem with keymidi message pointer, is null");
-		message->prettyPrint();
+		// message->prettyPrint();
 		handleMessage(*message);
 	}
 	while(cParser.numAvailableMessages() > 0) {
 		IMidiChannelMessage* message = cParser.getNextChannelMessage();
 		if(!message) throw std::runtime_error("problem with controlmidi message pointer, is null");
-		message->prettyPrint();
+		// message->prettyPrint();
 		handleMessage(*message);
 	}
 }

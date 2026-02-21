@@ -120,7 +120,7 @@ void Looper::erase(){
 //TODO: make this less complicated
 float Looper::process(float inFrame){
 	if(state.isWaitingForBarStart()){
-		if(parent.metronome.getBeatsElapsed() == 0 && parent.metronome.getFrameCounter() == 0){
+		if(parent.metronome.didBarStartThisFrame()){
 			rt_printf("bar started,");
 			state.setWaitingForBarStart(false);
 			if(state.isRecording()){

@@ -85,6 +85,8 @@ public:
 
     void rewind();
 
+    void setAutoReleaseOnReadEnd(bool enabled){ autoReleaseOnReadEnd = enabled; }
+
     SampleIdentifier sampleIdentifier;
 
     void markChunkAsReady();
@@ -118,6 +120,7 @@ private:
     int chunkIndexInBuffer;
     float* chunkStartPtr;
     float* data;
+    bool autoReleaseOnReadEnd = true;
 };
 
 

@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <atomic>
 #include "../streamingBuffer/StreamingBuffer.h"
 #include "../general/TaskWrapper.h"
 #include "Voices.h"
@@ -13,6 +14,15 @@
 class StreamingBuffer;
 using SampleIdentifier = std::pair<int, int>;
 class ResourceManager;
+
+struct SamplePackVoiceSettings {
+    float attack = 0.0f;
+    float decay = 0.0f;
+    float sustain = 1.0f;
+    float release = 0.1f;
+    bool repeat = false;
+};
+
 class SamplePack {
 public:
     // make one for an instrument samplepack (larger) and one for a drum sample pack (smaller)
@@ -50,6 +60,11 @@ public:
 
     void printBufferInfo(){streamingBuffer.printInfo();}
 
+    bool isLoading() const { return loading.load(std::memory_order_acquire); }
+
+    void setVoiceSettings(const SamplePackVoiceSettings& settings);
+    SamplePackVoiceSettings getVoiceSettings() const { return voiceSettings; }
+
 private:
     Voices voices;
     std::string samplePackName;
@@ -62,4 +77,7 @@ private:
     int initTaskPrio = 70;
     std::string initTaskName;
     TaskWrapper<SamplePack, DefaultTaskMessage> initTask;
+    std::atomic<bool> loading{false};
+    int loadingIdleBlockCounter = 0;
+    SamplePackVoiceSettings voiceSettings;
 };

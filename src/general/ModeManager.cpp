@@ -1,5 +1,6 @@
 #include <Bela.h>
 #include <cassert>
+#include <cmath>
 //compiel
 #include "../../include/general/ModeManager.h"
 #include "../../include/general/ResourceManager.h"
@@ -191,41 +192,72 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 	static int midiNote = 35; //Note E0
 	static int midiVelocity = 64;
 	static float frequency = 440.0f * powf(2.0f, (midiNote - 69.0f) / 12.0f);
-	static float sampleLengthInSeconds = 1.0f/frequency;
-	static int totalSamples = static_cast<int>(sampleLengthInSeconds * resourceManager.audioFramesPerSecond);
+	static int samplesPerPeriod = [] (float sampleRate, float freq){
+		int periodSamples = static_cast<int>(std::round(sampleRate / freq));
+		return periodSamples < 2 ? 2 : periodSamples;
+	}(resourceManager.audioFramesPerSecond, frequency);
+	static float effectiveFrequency = resourceManager.audioFramesPerSecond / static_cast<float>(samplesPerPeriod);
+	static int totalSamples = samplesPerPeriod;
+	static constexpr float targetSampleLengthSeconds = 20.0f;
 	static std::vector<float> sample(totalSamples, 0.0f);
 	static bool recordingSine = false;
 	static bool recordingSaw = false;
 	static bool recordingSquare = false;
+	static bool preparedSine = false;
+	static bool preparedSaw = false;
+	static bool preparedSquare = false;
+	static bool startedSine = false;
+	static bool startedSaw = false;
+	static bool startedSquare = false;
 	static int recordingIndex = 0;
+	const int targetFrames = std::max(1, static_cast<int>(std::round(targetSampleLengthSeconds * resourceManager.audioFramesPerSecond)));
+	const int periodsToWrite = std::max(1, static_cast<int>(std::ceil(static_cast<float>(targetFrames) / static_cast<float>(totalSamples))));
+	const int totalFramesToWrite = periodsToWrite * totalSamples;
+	const float recordingDurationSeconds = static_cast<float>(totalFramesToWrite) / resourceManager.audioFramesPerSecond;
+	const float stageGapSeconds = 0.5f;
+	const float sineRecordStartSeconds = 2.0f;
+	const float sawCreateSeconds = sineRecordStartSeconds + recordingDurationSeconds + stageGapSeconds;
+	const float sawRecordStartSeconds = sawCreateSeconds + stageGapSeconds;
+	const float squareCreateSeconds = sawRecordStartSeconds + recordingDurationSeconds + stageGapSeconds;
+	const float squareRecordStartSeconds = squareCreateSeconds + stageGapSeconds;
+	const float allDoneSeconds = squareRecordStartSeconds + recordingDurationSeconds + 1.0f;
 
 	rm.getRecorder().processBlockwise();
 
-	if(blocksElapsed == 1){
-		rt_printf("Creating Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, frequency);
+	auto phaseAt = [](int sampleIndex, float phaseOffset) -> float {
+		float phase = static_cast<float>(sampleIndex) / static_cast<float>(totalSamples);
+		phase += phaseOffset;
+		phase = phase - floorf(phase); // keep [0,1)
+		return phase;
+	};
+
+	if(!preparedSine){
+		rt_printf("Creating Oscillator Sample for note %d target=%.4fHz effective=%.4fHz periodSamples=%d\n",
+			midiNote, frequency, effectiveFrequency, totalSamples);
 		//TODO: remove this whole testSampleThing
 		//The following will drop blocks - too lazy to make task do it
 		for(int i = 0; i < totalSamples; i++){
-			float time = (float)i / resourceManager.audioFramesPerSecond;
-			float omega = 2 * M_PI * frequency;
-			sample[i] = 0.1f * sinf(omega * time);
+			float phase = phaseAt(i, 0.0f);
+			sample[i] = 0.1f * sinf(2.0f * M_PI * phase);
 		}
+		preparedSine = true;
 	}
-	if(blocksElapsed == resourceManager.blocksPerSecond * 2){ // wait 2 seconds for the initialization to finish
+	if(!startedSine && blocksElapsed >= static_cast<size_t>(resourceManager.blocksPerSecond * sineRecordStartSeconds)){ // wait for initialization
 		recordingSine = true;
+		startedSine = true;
 		std::string filePath = resourceManager.SAMPLES_PATH + "SineOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
 		rm.getRecorder().setNewFilename(filePath);
 		rt_printf("Writing sample to %s\n", filePath.c_str());
 		rm.getRecorder().startRecording();
 	}
-	if(recordingSine){
-		for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
-			if(recordingIndex >= 100 * totalSamples){
-				recordingSine = false;
-				rm.getRecorder().stopRecording();
-				rt_printf("Finished writing sample.\n");
-				break;
-			}
+		if(recordingSine){
+			for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
+				if(recordingIndex >= totalFramesToWrite){
+					recordingSine = false;
+					rm.getRecorder().stopRecording();
+					rt_printf("Finished writing sample.\n");
+					break;
+				}
 			float nextSample = sample[recordingIndex % totalSamples];
 			if(recordingIndex < totalSamples && recordingIndex % (totalSamples / 8) == 0){
 				int recordingSegment = recordingIndex / (totalSamples / 8);
@@ -236,30 +268,32 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 		}
 	}
 	
-	if(blocksElapsed == resourceManager.blocksPerSecond * 3.5){
-		rt_printf("Creating Saw Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, frequency);
+	if(!preparedSaw && blocksElapsed >= static_cast<size_t>(resourceManager.blocksPerSecond * sawCreateSeconds)){
+		rt_printf("Creating Saw Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, effectiveFrequency);
 		for(int i = 0; i < totalSamples; i++){
-			float time = (float)i / resourceManager.audioFramesPerSecond;
-			float omega = 2 * M_PI * frequency;
-			sample[i] = 0.1f * (2.0f * (time * frequency - floorf(0.5f + time * frequency)));
+			// Start at an upward zero crossing and keep the period exact in samples.
+			float phase = phaseAt(i, 0.5f);
+			sample[i] = 0.1f * (2.0f * phase - 1.0f);
 		}
+		preparedSaw = true;
 	}
-	if(blocksElapsed == resourceManager.blocksPerSecond * 4){
+	if(!startedSaw && blocksElapsed >= static_cast<size_t>(resourceManager.blocksPerSecond * sawRecordStartSeconds)){
 		recordingIndex = 0;
 		recordingSaw = true;
+		startedSaw = true;
 		std::string filePath = resourceManager.SAMPLES_PATH + "SawOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
 		rm.getRecorder().setNewFilename(filePath);
 		rt_printf("Writing sample to %s\n", filePath.c_str());
 		rm.getRecorder().startRecording();
 	}
-	if(recordingSaw){
-		for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
-			if(recordingIndex >= 100 * totalSamples){
-				recordingSaw = false;
-				rm.getRecorder().stopRecording();
-				rt_printf("Finished writing sample.\n");
-				break;
-			}
+		if(recordingSaw){
+			for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
+				if(recordingIndex >= totalFramesToWrite){
+					recordingSaw = false;
+					rm.getRecorder().stopRecording();
+					rt_printf("Finished writing sample.\n");
+					break;
+				}
 			float nextSample = sample[recordingIndex % totalSamples];
 			if(recordingIndex < totalSamples && recordingIndex % (totalSamples / 8) == 0){
 				int recordingSegment = recordingIndex / (totalSamples / 8);
@@ -269,30 +303,39 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 			recordingIndex++;
 		}
 	}
-	if(blocksElapsed == resourceManager.blocksPerSecond * 5.5){
-		rt_printf("Creating Square Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, frequency);
+	if(!preparedSquare && blocksElapsed >= static_cast<size_t>(resourceManager.blocksPerSecond * squareCreateSeconds)){
+		rt_printf("Creating Square Oscillator Sample for note %d at frequency %.2f Hz\n", midiNote, effectiveFrequency);
 		for(int i = 0; i < totalSamples; i++){
-			float time = (float)i / resourceManager.audioFramesPerSecond;
-			float omega = 2 * M_PI * frequency;
-			sample[i] = 0.1f * (sinf(omega * time) >= 0 ? 1.0f : -1.0f);
+			// Square-like from odd harmonics: periodic in exactly totalSamples and
+			// crossing zero at loop start with positive slope.
+			float phase = phaseAt(i, 0.0f);
+			float value = 0.0f;
+			const int maxOddHarmonic = 31;
+			for(int harmonic = 1; harmonic <= maxOddHarmonic; harmonic += 2){
+				value += sinf(2.0f * M_PI * static_cast<float>(harmonic) * phase) / static_cast<float>(harmonic);
+			}
+			value *= (4.0f / M_PI);
+			sample[i] = 0.1f * clamp(value, -1.0f, 1.0f);
 		}
+		preparedSquare = true;
 	}
-	if(blocksElapsed == resourceManager.blocksPerSecond * 6){
+	if(!startedSquare && blocksElapsed >= static_cast<size_t>(resourceManager.blocksPerSecond * squareRecordStartSeconds)){
 		recordingIndex = 0;
 		recordingSquare = true;
+		startedSquare = true;
 		std::string filePath = resourceManager.SAMPLES_PATH + "SquareOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
 		rm.getRecorder().setNewFilename(filePath);
 		rt_printf("Writing sample to %s\n", filePath.c_str());
 		rm.getRecorder().startRecording();
 	}
-	if(recordingSquare){
-		for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
-			if(recordingIndex >= 100 * totalSamples){
-				recordingSquare = false;
-				rm.getRecorder().stopRecording();
-				rt_printf("Finished writing sample.\n");
-				break;
-			}
+		if(recordingSquare){
+			for(int i = 0; i < resourceManager.audioFramesPerBlock; i++){
+				if(recordingIndex >= totalFramesToWrite){
+					recordingSquare = false;
+					rm.getRecorder().stopRecording();
+					rt_printf("Finished writing sample.\n");
+					break;
+				}
 			float nextSample = sample[recordingIndex % totalSamples];
 			if(recordingIndex < totalSamples && recordingIndex % (totalSamples / 8) == 0){
 				int recordingSegment = recordingIndex / (totalSamples / 8);
@@ -303,9 +346,18 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 		}
 	}
 	
-	if(blocksElapsed > resourceManager.blocksPerSecond * 10){ // wait 10 seconds max
+	if(blocksElapsed > static_cast<size_t>(resourceManager.blocksPerSecond * allDoneSeconds)){
 		currentTestDone = true;
 		blocksElapsed = 0;
+		recordingSine = false;
+		recordingSaw = false;
+		recordingSquare = false;
+		preparedSine = false;
+		preparedSaw = false;
+		preparedSquare = false;
+		startedSine = false;
+		startedSaw = false;
+		startedSquare = false;
 	}
 }
 

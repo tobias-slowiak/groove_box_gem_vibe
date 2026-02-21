@@ -38,8 +38,11 @@ EffectType effectTypeFromIndex(int effectTypeIndex){
     switch(effectTypeIndex){
         case 0: return EffectType::LowPass;
         case 1: return EffectType::HighPass;
-        case 2: return EffectType::Delay;
-        case 3: return EffectType::Reverb;
+        case 2: return EffectType::Drive;
+        case 3: return EffectType::Chorus;
+        case 4: return EffectType::Phaser;
+        case 5: return EffectType::Delay;
+        case 6: return EffectType::Reverb;
         default: return EffectType::LowPass;
     }
 }
@@ -48,6 +51,9 @@ std::string effectTypeToString(EffectType type){
     switch(type){
         case EffectType::LowPass: return "LP";
         case EffectType::HighPass: return "HP";
+        case EffectType::Drive: return "Drive";
+        case EffectType::Chorus: return "Chorus";
+        case EffectType::Phaser: return "Phaser";
         case EffectType::Delay: return "Delay";
         case EffectType::Reverb: return "Reverb";
         default: return "FX";
@@ -125,7 +131,7 @@ void clampEffectsSelection(UIStateContext& ctxt){
         ctxt.effectsTargetIndex = targetIndex;
     }
 
-    int effectTypeCount = 4;
+    int effectTypeCount = 7;
     int effectTypeIndex = ctxt.effectsNewTypeIndex % effectTypeCount;
     if(effectTypeIndex < 0) effectTypeIndex += effectTypeCount;
     ctxt.effectsNewTypeIndex = effectTypeIndex;
@@ -190,6 +196,213 @@ void removeSelectedEffectOnCurrentTarget(UIStateContext& ctxt){
         chain.removeEffect(effects.at(stageIndex).id);
     });
     clampEffectsSelection(ctxt);
+}
+
+SamplePackVoiceSettings toVoiceSettings(const InstrumentDefaults& defaults){
+    SamplePackVoiceSettings out;
+    out.attack = defaults.voice.attack;
+    out.decay = defaults.voice.decay;
+    out.sustain = defaults.voice.sustain;
+    out.release = defaults.voice.release;
+    out.repeat = defaults.voice.repeat;
+    return out;
+}
+
+void applyEffectDefaultsToInstrumentBus(UIStateContext& ctxt, const std::vector<EffectStageDefaults>& defaults){
+    EffectsChain& chain = ctxt.rm.getSignalRouter().getInstrumentEffects();
+    chain.clearEffects();
+    for(const auto& effect : defaults){
+        chain.addEffect(effect.type, effect.params);
+    }
+}
+
+void applyCatalogDefaults(UIStateContext& ctxt, bool keys, bool reloadSamples){
+    if(keys){
+        auto& catalog = ctxt.rm.getInstrumentCatalog();
+        SamplePack& samplePack = ctxt.rm.getKeyInstrumentSamplePack();
+        if(reloadSamples){
+            samplePack.initForFolder(catalog.getFolderName(ctxt.instrumentIndex));
+        }
+        InstrumentDefaults& defaults = catalog.getDefaults(ctxt.instrumentIndex);
+        samplePack.setVoiceSettings(toVoiceSettings(defaults));
+        if(ctxt.rm.keysInMelodicMode){
+            applyEffectDefaultsToInstrumentBus(ctxt, defaults.effects);
+        }
+        return;
+    }
+
+    auto& catalog = ctxt.rm.getDrumCatalog();
+    SamplePack& samplePack = ctxt.rm.getDrumSamplePack();
+    if(reloadSamples){
+        samplePack.initForFolder(catalog.getFolderName(ctxt.drumIndex));
+    }
+    InstrumentDefaults& defaults = catalog.getDefaults(ctxt.drumIndex);
+    samplePack.setVoiceSettings(toVoiceSettings(defaults));
+    if(!ctxt.rm.keysInMelodicMode){
+        applyEffectDefaultsToInstrumentBus(ctxt, defaults.effects);
+    }
+}
+
+SamplePack& getActiveModeSamplePack(UIStateContext& ctxt){
+    if(ctxt.rm.keysInMelodicMode){
+        return ctxt.rm.getKeyInstrumentSamplePack();
+    }
+    return ctxt.rm.getDrumSamplePack();
+}
+
+std::string getSelectedEffectParamDisplay(UIStateContext& ctxt, int paramIndex){
+    EffectDescriptor desc;
+    if(!getSelectedEffectDescriptor(ctxt, desc)){
+        return std::string("-");
+    }
+
+    const EffectParameters& p = desc.params;
+    if(desc.type == EffectType::LowPass || desc.type == EffectType::HighPass){
+        if(paramIndex == 0) return "cut:" + std::to_string(static_cast<int>(p.cutoffHz));
+        if(paramIndex == 1) return "mix:" + std::to_string(p.mix);
+        if(paramIndex == 2) return "fine:" + std::to_string(static_cast<int>(p.cutoffHz));
+        if(paramIndex == 3) return "res:" + std::to_string(p.resonance);
+        return std::string("-");
+    }
+
+    if(desc.type == EffectType::Delay){
+        if(paramIndex == 0){
+            if(p.delayTempoNote != DelayTempoNote::Off){
+                const float syncedMs = delayTempoNoteToMs(p.delayTempoNote, ctxt.metronome.getBPM());
+                return "ms:" + std::to_string(static_cast<int>(syncedMs));
+            }
+            return "ms:" + std::to_string(static_cast<int>(p.delayMs));
+        }
+        if(paramIndex == 1) return "fb:" + std::to_string(p.feedback);
+        if(paramIndex == 2) return "mix:" + std::to_string(p.mix);
+        if(paramIndex == 3) return "note:" + delayTempoNoteToString(p.delayTempoNote);
+        return std::string("-");
+    }
+
+    if(desc.type == EffectType::Drive){
+        if(paramIndex == 0) return "drv:" + std::to_string(p.drive);
+        if(paramIndex == 1) return "tone:" + std::to_string(static_cast<int>(p.cutoffHz));
+        if(paramIndex == 2) return "shp:" + std::to_string(p.resonance);
+        if(paramIndex == 3) return "mix:" + std::to_string(p.mix);
+        return std::string("-");
+    }
+
+    if(desc.type == EffectType::Chorus){
+        if(paramIndex == 0) return "rate:" + std::to_string(p.rateHz);
+        if(paramIndex == 1) return "dep:" + std::to_string(p.depth);
+        if(paramIndex == 2) return "dly:" + std::to_string(static_cast<int>(p.delayMs));
+        if(paramIndex == 3) return "mix:" + std::to_string(p.mix);
+        return std::string("-");
+    }
+
+    if(desc.type == EffectType::Phaser){
+        if(paramIndex == 0) return "rate:" + std::to_string(p.rateHz);
+        if(paramIndex == 1) return "dep:" + std::to_string(p.depth);
+        if(paramIndex == 2) return "fb:" + std::to_string(p.resonance);
+        if(paramIndex == 3) return "mix:" + std::to_string(p.mix);
+        return std::string("-");
+    }
+
+    if(desc.type == EffectType::Reverb){
+        if(paramIndex == 0) return "room:" + std::to_string(p.roomSize);
+        if(paramIndex == 1) return "damp:" + std::to_string(p.damping);
+        if(paramIndex == 2) return "mix:" + std::to_string(p.mix);
+        if(paramIndex == 3) return "rFine:" + std::to_string(p.roomSize);
+        return std::string("-");
+    }
+
+    return std::string("-");
+}
+
+void adjustSelectedEffectParam(UIStateContext& ctxt, int paramIndex, int direction){
+    if(direction == 0){
+        return;
+    }
+    const int shift = direction > 0 ? 1 : -1;
+    applyToSelectedEffect(ctxt, [&](EffectParameters& p, EffectType type){
+        if(type == EffectType::LowPass || type == EffectType::HighPass){
+            if(paramIndex == 0){
+                p.cutoffHz = clampFx(p.cutoffHz + (100.0f * static_cast<float>(shift)), 20.0f, 18000.0f);
+            } else if(paramIndex == 1){
+                p.mix = clampFx(p.mix + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 2){
+                p.cutoffHz = clampFx(p.cutoffHz + (10.0f * static_cast<float>(shift)), 20.0f, 18000.0f);
+            } else if(paramIndex == 3){
+                p.resonance = clampFx(p.resonance + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            }
+            return;
+        }
+
+        if(type == EffectType::Delay){
+            if(paramIndex == 0){
+                p.delayMs = clampFx(p.delayMs + (10.0f * static_cast<float>(shift)), 1.0f, 2000.0f);
+                p.delayTempoNote = DelayTempoNote::Off;
+                p.delaySyncToTempo = false;
+            } else if(paramIndex == 1){
+                p.feedback = clampFx(p.feedback + (0.05f * static_cast<float>(shift)), 0.0f, 0.98f);
+            } else if(paramIndex == 2){
+                p.mix = clampFx(p.mix + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 3){
+                p.delayTempoNote = cycleDelayTempoNote(p.delayTempoNote, shift);
+                if(p.delayTempoNote != DelayTempoNote::Off){
+                    p.delaySyncToTempo = false;
+                    p.delayMs = clampFx(delayTempoNoteToMs(p.delayTempoNote, ctxt.metronome.getBPM()), 1.0f, 2000.0f);
+                }
+            }
+            return;
+        }
+
+        if(type == EffectType::Drive){
+            if(paramIndex == 0){
+                p.drive = clampFx(p.drive + (0.5f * static_cast<float>(shift)), 1.0f, 40.0f);
+            } else if(paramIndex == 1){
+                p.cutoffHz = clampFx(p.cutoffHz + (100.0f * static_cast<float>(shift)), 120.0f, 18000.0f);
+            } else if(paramIndex == 2){
+                p.resonance = clampFx(p.resonance + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 3){
+                p.mix = clampFx(p.mix + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            }
+            return;
+        }
+
+        if(type == EffectType::Chorus){
+            if(paramIndex == 0){
+                p.rateHz = clampFx(p.rateHz + (0.05f * static_cast<float>(shift)), 0.05f, 8.0f);
+            } else if(paramIndex == 1){
+                p.depth = clampFx(p.depth + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 2){
+                p.delayMs = clampFx(p.delayMs + (1.0f * static_cast<float>(shift)), 2.0f, 30.0f);
+            } else if(paramIndex == 3){
+                p.mix = clampFx(p.mix + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            }
+            return;
+        }
+
+        if(type == EffectType::Phaser){
+            if(paramIndex == 0){
+                p.rateHz = clampFx(p.rateHz + (0.05f * static_cast<float>(shift)), 0.05f, 6.0f);
+            } else if(paramIndex == 1){
+                p.depth = clampFx(p.depth + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 2){
+                p.resonance = clampFx(p.resonance + (0.05f * static_cast<float>(shift)), 0.0f, 0.95f);
+            } else if(paramIndex == 3){
+                p.mix = clampFx(p.mix + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            }
+            return;
+        }
+
+        if(type == EffectType::Reverb){
+            if(paramIndex == 0){
+                p.roomSize = clampFx(p.roomSize + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 1){
+                p.damping = clampFx(p.damping + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 2){
+                p.mix = clampFx(p.mix + (0.05f * static_cast<float>(shift)), 0.0f, 1.0f);
+            } else if(paramIndex == 3){
+                p.roomSize = clampFx(p.roomSize + (0.01f * static_cast<float>(shift)), 0.0f, 1.0f);
+            }
+        }
+    });
 }
 
 
@@ -264,8 +477,7 @@ void removeSelectedEffectOnCurrentTarget(UIStateContext& ctxt){
                                     uiRef.ctxt.instrumentIndex = (uiRef.ctxt.instrumentIndex - 1 + uiRef.ctxt.rm.getInstrumentCatalog().size()) % uiRef.ctxt.rm.getInstrumentCatalog().size();
                                 },
                                 [&uiRef]() {
-                                    uiRef.ctxt.rm.getKeyInstrumentSamplePack().initForFolder(
-                                        uiRef.ctxt.rm.getInstrumentCatalog().getFolderName(uiRef.ctxt.instrumentIndex));
+                                    applyCatalogDefaults(uiRef.ctxt, true, true);
                                 }
                             }
                         },
@@ -279,16 +491,129 @@ void removeSelectedEffectOnCurrentTarget(UIStateContext& ctxt){
                                     uiRef.ctxt.drumIndex = (uiRef.ctxt.drumIndex - 1 + uiRef.ctxt.rm.getDrumCatalog().size()) % uiRef.ctxt.rm.getDrumCatalog().size();
                                 },
                                 [&uiRef]() {
-                                    uiRef.ctxt.rm.getDrumSamplePack().initForFolder(
-                                        uiRef.ctxt.rm.getDrumCatalog().getFolderName(uiRef.ctxt.drumIndex));
+                                    applyCatalogDefaults(uiRef.ctxt, false, true);
                                 }
                             }
                         },
                         {"Active",
                         [&uiRef]() { return uiRef.ctxt.rm.keysInMelodicMode ? "Melodic" : "Drums"; },
                             {
-                                [&uiRef]() { uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode; },
-                                [&uiRef]() { uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode; },
+                                [&uiRef]() {
+                                    uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode;
+                                    if(uiRef.ctxt.rm.keysInMelodicMode){
+                                        applyCatalogDefaults(uiRef.ctxt, true, false);
+                                    } else {
+                                        applyCatalogDefaults(uiRef.ctxt, false, false);
+                                    }
+                                },
+                                [&uiRef]() {
+                                    uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode;
+                                    if(uiRef.ctxt.rm.keysInMelodicMode){
+                                        applyCatalogDefaults(uiRef.ctxt, true, false);
+                                    } else {
+                                        applyCatalogDefaults(uiRef.ctxt, false, false);
+                                    }
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Attack",
+                        [&uiRef]() {
+                            return std::to_string(getActiveModeSamplePack(uiRef.ctxt).getVoiceSettings().attack);
+                        },
+                            {
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.attack = clampFx(settings.attack + 0.005f, 0.0f, 5.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.attack = clampFx(settings.attack - 0.005f, 0.0f, 5.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Decay",
+                        [&uiRef]() {
+                            return std::to_string(getActiveModeSamplePack(uiRef.ctxt).getVoiceSettings().decay);
+                        },
+                            {
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.decay = clampFx(settings.decay + 0.005f, 0.0f, 5.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.decay = clampFx(settings.decay - 0.005f, 0.0f, 5.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Sustain",
+                        [&uiRef]() {
+                            return std::to_string(getActiveModeSamplePack(uiRef.ctxt).getVoiceSettings().sustain);
+                        },
+                            {
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.sustain = clampFx(settings.sustain + 0.05f, 0.0f, 1.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.sustain = clampFx(settings.sustain - 0.05f, 0.0f, 1.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Release",
+                        [&uiRef]() {
+                            return std::to_string(getActiveModeSamplePack(uiRef.ctxt).getVoiceSettings().release);
+                        },
+                            {
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.release = clampFx(settings.release + 0.005f, 0.0f, 5.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.release = clampFx(settings.release - 0.005f, 0.0f, 5.0f);
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                []() {}
+                            }
+                        },
+                        {"Repeat",
+                        [&uiRef]() {
+                            return getActiveModeSamplePack(uiRef.ctxt).getVoiceSettings().repeat ? "On" : "Off";
+                        },
+                            {
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.repeat = !settings.repeat;
+                                    samplePack.setVoiceSettings(settings);
+                                },
+                                [&uiRef]() {
+                                    SamplePack& samplePack = getActiveModeSamplePack(uiRef.ctxt);
+                                    SamplePackVoiceSettings settings = samplePack.getVoiceSettings();
+                                    settings.repeat = !settings.repeat;
+                                    samplePack.setVoiceSettings(settings);
+                                },
                                 []() {}
                             }
                         }});
@@ -475,126 +800,35 @@ void removeSelectedEffectOnCurrentTarget(UIStateContext& ctxt){
                                 []() {}
                             }
                         },
-                        {"Mix",
-                        [&uiRef]() {
-                            EffectDescriptor desc;
-                            if(!getSelectedEffectDescriptor(uiRef.ctxt, desc)) return std::string("-");
-                            return std::to_string(desc.params.mix);
-                        },
+                        {"P1",
+                        [&uiRef]() { return getSelectedEffectParamDisplay(uiRef.ctxt, 0); },
                             {
-                                [&uiRef]() { applyToSelectedEffect(uiRef.ctxt, [](EffectParameters& p, EffectType){ p.mix = clampFx(p.mix + 0.05f, 0.0f, 1.0f); }); },
-                                [&uiRef]() { applyToSelectedEffect(uiRef.ctxt, [](EffectParameters& p, EffectType){ p.mix = clampFx(p.mix - 0.05f, 0.0f, 1.0f); }); },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 0, +1); },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 0, -1); },
                                 []() {}
                             }
                         },
-                        {"Param1",
-                        [&uiRef]() {
-                            EffectDescriptor desc;
-                            if(!getSelectedEffectDescriptor(uiRef.ctxt, desc)) return std::string("-");
-                            if(desc.type == EffectType::LowPass || desc.type == EffectType::HighPass){
-                                return "cut:" + std::to_string(static_cast<int>(desc.params.cutoffHz));
-                            }
-                            if(desc.type == EffectType::Delay){
-                                if(desc.params.delayTempoNote != DelayTempoNote::Off){
-                                    const float syncedMs = delayTempoNoteToMs(desc.params.delayTempoNote, uiRef.ctxt.metronome.getBPM());
-                                    return "ms:" + std::to_string(static_cast<int>(syncedMs));
-                                }
-                                return "ms:" + std::to_string(static_cast<int>(desc.params.delayMs));
-                            }
-                            return "room:" + std::to_string(desc.params.roomSize);
-                        },
+                        {"P2",
+                        [&uiRef]() { return getSelectedEffectParamDisplay(uiRef.ctxt, 1); },
                             {
-                                [&uiRef]() {
-                                    applyToSelectedEffect(uiRef.ctxt, [](EffectParameters& p, EffectType type){
-                                        if(type == EffectType::LowPass || type == EffectType::HighPass){
-                                            p.cutoffHz = clampFx(p.cutoffHz + 100.0f, 20.0f, 18000.0f);
-                                        } else if(type == EffectType::Delay){
-                                            p.delayMs = clampFx(p.delayMs + 10.0f, 1.0f, 2000.0f);
-                                            p.delayTempoNote = DelayTempoNote::Off;
-                                        } else {
-                                            p.roomSize = clampFx(p.roomSize + 0.05f, 0.0f, 1.0f);
-                                        }
-                                    });
-                                },
-                                [&uiRef]() {
-                                    applyToSelectedEffect(uiRef.ctxt, [](EffectParameters& p, EffectType type){
-                                        if(type == EffectType::LowPass || type == EffectType::HighPass){
-                                            p.cutoffHz = clampFx(p.cutoffHz - 100.0f, 20.0f, 18000.0f);
-                                        } else if(type == EffectType::Delay){
-                                            p.delayMs = clampFx(p.delayMs - 10.0f, 1.0f, 2000.0f);
-                                            p.delayTempoNote = DelayTempoNote::Off;
-                                        } else {
-                                            p.roomSize = clampFx(p.roomSize - 0.05f, 0.0f, 1.0f);
-                                        }
-                                    });
-                                },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 1, +1); },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 1, -1); },
                                 []() {}
                             }
                         },
-                        {"Param2",
-                        [&uiRef]() {
-                            EffectDescriptor desc;
-                            if(!getSelectedEffectDescriptor(uiRef.ctxt, desc)) return std::string("-");
-                            if(desc.type == EffectType::Delay){
-                                return "fb:" + std::to_string(desc.params.feedback);
-                            }
-                            if(desc.type == EffectType::Reverb){
-                                return "damp:" + std::to_string(desc.params.damping);
-                            }
-                            return std::string("-");
-                        },
+                        {"P3",
+                        [&uiRef]() { return getSelectedEffectParamDisplay(uiRef.ctxt, 2); },
                             {
-                                [&uiRef]() {
-                                    applyToSelectedEffect(uiRef.ctxt, [](EffectParameters& p, EffectType type){
-                                        if(type == EffectType::Delay){
-                                            p.feedback = clampFx(p.feedback + 0.05f, 0.0f, 0.98f);
-                                        } else if(type == EffectType::Reverb){
-                                            p.damping = clampFx(p.damping + 0.05f, 0.0f, 1.0f);
-                                        }
-                                    });
-                                },
-                                [&uiRef]() {
-                                    applyToSelectedEffect(uiRef.ctxt, [](EffectParameters& p, EffectType type){
-                                        if(type == EffectType::Delay){
-                                            p.feedback = clampFx(p.feedback - 0.05f, 0.0f, 0.98f);
-                                        } else if(type == EffectType::Reverb){
-                                            p.damping = clampFx(p.damping - 0.05f, 0.0f, 1.0f);
-                                        }
-                                    });
-                                },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 2, +1); },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 2, -1); },
                                 []() {}
                             }
                         },
-                        {"DelayNote",
-                        [&uiRef]() {
-                            EffectDescriptor desc;
-                            if(!getSelectedEffectDescriptor(uiRef.ctxt, desc)) return std::string("-");
-                            if(desc.type != EffectType::Delay) return std::string("-");
-                            return delayTempoNoteToString(desc.params.delayTempoNote);
-                        },
+                        {"P4",
+                        [&uiRef]() { return getSelectedEffectParamDisplay(uiRef.ctxt, 3); },
                             {
-                                [&uiRef]() {
-                                    applyToSelectedEffect(uiRef.ctxt, [&uiRef](EffectParameters& p, EffectType type){
-                                        if(type == EffectType::Delay){
-                                            p.delayTempoNote = cycleDelayTempoNote(p.delayTempoNote, 1);
-                                            if(p.delayTempoNote != DelayTempoNote::Off){
-                                                p.delaySyncToTempo = false;
-                                                p.delayMs = clampFx(delayTempoNoteToMs(p.delayTempoNote, uiRef.ctxt.metronome.getBPM()), 1.0f, 2000.0f);
-                                            }
-                                        }
-                                    });
-                                },
-                                [&uiRef]() {
-                                    applyToSelectedEffect(uiRef.ctxt, [&uiRef](EffectParameters& p, EffectType type){
-                                        if(type == EffectType::Delay){
-                                            p.delayTempoNote = cycleDelayTempoNote(p.delayTempoNote, -1);
-                                            if(p.delayTempoNote != DelayTempoNote::Off){
-                                                p.delaySyncToTempo = false;
-                                                p.delayMs = clampFx(delayTempoNoteToMs(p.delayTempoNote, uiRef.ctxt.metronome.getBPM()), 1.0f, 2000.0f);
-                                            }
-                                        }
-                                    });
-                                },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 3, +1); },
+                                [&uiRef]() { adjustSelectedEffectParam(uiRef.ctxt, 3, -1); },
                                 []() {}
                             }
                         }});

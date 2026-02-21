@@ -113,8 +113,14 @@ void UI::triggerVoice(int note, int velocity, bool melodicMode){
 			}
 		}
 		if(melodicMode){
+			if(ctxt.rm.getKeyInstrumentSamplePack().isLoading()){
+				return;
+			}
 			ctxt.rm.getKeyInstrumentSamplePack().triggerVoice(note, velocity, true, 1.0f);
 		}else{
+			if(ctxt.rm.getDrumSamplePack().isLoading()){
+				return;
+			}
 			ctxt.rm.getDrumSamplePack().triggerVoice(note, velocity, true, 1.0f);
 		}
 }
@@ -156,6 +162,12 @@ void UI::samplerToggleRecord(){
 
 
 void UI::processBlockwise(){
+	bool loadingNow = isAnyInstrumentLoading();
+	if(loadingNow != loadingIndicatorWasActive){
+		loadingIndicatorWasActive = loadingNow;
+		updateDisplay();
+	}
+
 	ctxt.blocksElapsedSinceLastDisplayUpdate++;
 	if(updateDisplayFlag){
 		updateDisplayFlag = false;
@@ -231,6 +243,21 @@ void UI::renderDisplay(){
 	for(int displayId = 0; displayId < 2; displayId++){
 		VEC_AT(textFrames, displayId).push_back(TextFrame{VEC_AT(frameStartChars, displayId), frameLine});
 	}
+
+	if(loadingIndicatorWasActive && !VEC_AT(liness, 1).empty()){
+		bool keysLoading = ctxt.rm.getKeyInstrumentSamplePack().isLoading();
+		bool drumsLoading = ctxt.rm.getDrumSamplePack().isLoading();
+		if(keysLoading && drumsLoading){
+			VEC_AT(liness, 1).front() = "loading: keys+drums";
+		} else if(keysLoading){
+			VEC_AT(liness, 1).front() = "loading: keys";
+		} else if(drumsLoading){
+			VEC_AT(liness, 1).front() = "loading: drums";
+		} else {
+			VEC_AT(liness, 1).front() = "loading";
+		}
+	}
+
 	if(isManualSliceEditActive()){
 		const std::vector<float>& waveform = ctxt.rm.getSamplers().getWaveformPreview(ctxt.samplerIndex, 128);
 		float startNorm = ctxt.rm.getSamplers().getSliceStartNormalized(ctxt.samplerIndex, ctxt.sliceIndex);
@@ -293,4 +320,9 @@ void UI::moveManualSliceBoundary(int direction){
 
 void UI::toggleManualSliceBoundarySelection(){
 	ctxt.editSliceStartBoundary = !ctxt.editSliceStartBoundary;
+}
+
+bool UI::isAnyInstrumentLoading() const{
+	return ctxt.rm.getKeyInstrumentSamplePack().isLoading()
+		|| ctxt.rm.getDrumSamplePack().isLoading();
 }

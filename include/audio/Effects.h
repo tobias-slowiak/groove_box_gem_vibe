@@ -10,6 +10,12 @@ enum class EffectType {
     LowPass,
     /// One-pole high-pass filter.
     HighPass,
+    /// Non-linear saturation / drive.
+    Drive,
+    /// Modulated short delay for width and movement.
+    Chorus,
+    /// Sweeping all-pass notch effect.
+    Phaser,
     /// Feedback delay line.
     Delay,
     /// Schroeder-style reverb.
@@ -45,6 +51,12 @@ struct EffectParameters {
 
     // LowPass / HighPass
     float cutoffHz = 1200.0f;
+    float resonance = 0.0f;    // [0..1], mapped internally to filter Q
+
+    // Drive / modulation effects
+    float drive = 4.0f;        // drive amount (linear pre-gain)
+    float rateHz = 0.6f;       // modulation rate
+    float depth = 0.5f;        // modulation depth [0..1]
 
     // Delay
     float delayMs = 250.0f;

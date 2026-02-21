@@ -28,6 +28,9 @@ ElementProxy::operator float() const {
     if(iterator.sampleIdentifier.first == ITERATOR_INVALID){
         return END_OF_SAMPLE;
     }
+    if(iterator.index >= iterator.sampleLength){
+        return END_OF_SAMPLE;
+    }
     assert(iterator.data != nullptr && "ElementProxy::operator float data null");
     return *(iterator.data);
 }
@@ -81,7 +84,9 @@ StreamingBufferIterator& StreamingBufferIterator::operator++(){      // pre-incr
             }
         }
         if(type == SBIType::Read){
-            this->release(); //TODO: do i really always want to release on end of sample for read iterators?
+            if(autoReleaseOnReadEnd){
+                this->release(); //TODO: do i really always want to release on end of sample for read iterators?
+            }
         }
         return *this;
     }
@@ -176,6 +181,7 @@ void StreamingBufferIterator::set(SampleIdentifier sampleIdentifier,
     this->chunkIndicesInBuffer = chunkIndicesInBuffer;
     this->type = type;
     this->streamingAdvanceInChunks = std::max(0, streamingAdvanceInChunks);
+    this->autoReleaseOnReadEnd = true;
     assert(this->sampleLength > 0 && "StreamingBufferIterator::set sampleLength must be > 0");
 
     this->chunkIndex = 0;
@@ -209,6 +215,7 @@ void StreamingBufferIterator::initialize(){
     this->chunkIndexInBuffer = ITERATOR_INVALID;
     this->chunkStartPtr = nullptr;
     this->data = nullptr;
+    this->autoReleaseOnReadEnd = true;
 }
 
 void StreamingBufferIterator::flush(){

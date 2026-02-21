@@ -1,5 +1,6 @@
 #include "../../include/audio/Effects.h"
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -44,30 +45,57 @@ public:
         if(!params.enabled) {
             return input;
         }
-        z = z + alpha * (input - z);
-        return input * (1.0f - mix) + z * mix;
+        const float y = b0 * input + z1;
+        z1 = b1 * input - a1 * y + z2;
+        z2 = b2 * input - a2 * y;
+        return input * (1.0f - mix) + y * mix;
     }
 
     void reset() override
     {
-        z = 0.0f;
+        z1 = 0.0f;
+        z2 = 0.0f;
     }
 
 private:
     void recalc()
     {
         const float fc = clampf(params.cutoffHz, 20.0f, sampleRate * 0.45f);
-        const float rc = 1.0f / (2.0f * kPi * fc);
-        const float dt = 1.0f / sampleRate;
-        alpha = dt / (rc + dt);
+        const float resonanceNorm = clampf(params.resonance, 0.0f, 1.0f);
+        const float q = 0.5f + resonanceNorm * 11.5f;
+        const float w0 = 2.0f * kPi * fc / sampleRate;
+        const float cosW0 = std::cos(w0);
+        const float sinW0 = std::sin(w0);
+        const float alpha = sinW0 / (2.0f * q);
+
+        float b0n = (1.0f - cosW0) * 0.5f;
+        float b1n = 1.0f - cosW0;
+        float b2n = (1.0f - cosW0) * 0.5f;
+        float a0n = 1.0f + alpha;
+        float a1n = -2.0f * cosW0;
+        float a2n = 1.0f - alpha;
+
+        if(a0n <= 0.000001f){
+            a0n = 0.000001f;
+        }
+        b0 = b0n / a0n;
+        b1 = b1n / a0n;
+        b2 = b2n / a0n;
+        a1 = a1n / a0n;
+        a2 = a2n / a0n;
         mix = clampf(params.mix, 0.0f, 1.0f);
     }
 
     float sampleRate;
     EffectParameters params;
-    float alpha = 0.05f;
+    float b0 = 1.0f;
+    float b1 = 0.0f;
+    float b2 = 0.0f;
+    float a1 = 0.0f;
+    float a2 = 0.0f;
+    float z1 = 0.0f;
+    float z2 = 0.0f;
     float mix = 1.0f;
-    float z = 0.0f;
 };
 
 class OnePoleHighPass final : public IEffectUnit {
@@ -91,34 +119,279 @@ public:
         if(!params.enabled) {
             return input;
         }
-        const float y = alpha * (prevY + input - prevX);
-        prevX = input;
-        prevY = y;
+        const float y = b0 * input + z1;
+        z1 = b1 * input - a1 * y + z2;
+        z2 = b2 * input - a2 * y;
         return input * (1.0f - mix) + y * mix;
     }
 
     void reset() override
     {
-        prevX = 0.0f;
-        prevY = 0.0f;
+        z1 = 0.0f;
+        z2 = 0.0f;
     }
 
 private:
     void recalc()
     {
         const float fc = clampf(params.cutoffHz, 20.0f, sampleRate * 0.45f);
-        const float rc = 1.0f / (2.0f * kPi * fc);
-        const float dt = 1.0f / sampleRate;
-        alpha = rc / (rc + dt);
+        const float resonanceNorm = clampf(params.resonance, 0.0f, 1.0f);
+        const float q = 0.5f + resonanceNorm * 11.5f;
+        const float w0 = 2.0f * kPi * fc / sampleRate;
+        const float cosW0 = std::cos(w0);
+        const float sinW0 = std::sin(w0);
+        const float alpha = sinW0 / (2.0f * q);
+
+        float b0n = (1.0f + cosW0) * 0.5f;
+        float b1n = -(1.0f + cosW0);
+        float b2n = (1.0f + cosW0) * 0.5f;
+        float a0n = 1.0f + alpha;
+        float a1n = -2.0f * cosW0;
+        float a2n = 1.0f - alpha;
+
+        if(a0n <= 0.000001f){
+            a0n = 0.000001f;
+        }
+        b0 = b0n / a0n;
+        b1 = b1n / a0n;
+        b2 = b2n / a0n;
+        a1 = a1n / a0n;
+        a2 = a2n / a0n;
         mix = clampf(params.mix, 0.0f, 1.0f);
     }
 
     float sampleRate;
     EffectParameters params;
-    float alpha = 0.95f;
+    float b0 = 1.0f;
+    float b1 = 0.0f;
+    float b2 = 0.0f;
+    float a1 = 0.0f;
+    float a2 = 0.0f;
+    float z1 = 0.0f;
+    float z2 = 0.0f;
     float mix = 1.0f;
-    float prevX = 0.0f;
-    float prevY = 0.0f;
+};
+
+class DriveUnit final : public IEffectUnit {
+public:
+    explicit DriveUnit(float sr) : sampleRate(sr) {}
+
+    void setSampleRate(float sr) override
+    {
+        sampleRate = sr;
+        recalc();
+    }
+
+    void setParameters(const EffectParameters& p) override
+    {
+        params = p;
+        recalc();
+    }
+
+    float process(float input) override
+    {
+        if(!params.enabled) {
+            return input;
+        }
+        const float x = input * drive;
+        const float soft = std::tanh(x);
+        const float hard = clampf(x, -1.0f, 1.0f);
+        const float shaped = soft * (1.0f - shape) + hard * shape;
+
+        toneState = shaped * (1.0f - toneCoeff) + toneState * toneCoeff;
+        return input * (1.0f - mix) + toneState * mix;
+    }
+
+    void reset() override
+    {
+        toneState = 0.0f;
+    }
+
+private:
+    void recalc()
+    {
+        drive = clampf(params.drive, 1.0f, 40.0f);
+        shape = clampf(params.resonance, 0.0f, 1.0f);
+        const float toneHz = clampf(params.cutoffHz, 120.0f, sampleRate * 0.45f);
+        toneCoeff = std::exp((-2.0f * kPi * toneHz) / sampleRate);
+        mix = clampf(params.mix, 0.0f, 1.0f);
+    }
+
+    float sampleRate;
+    EffectParameters params;
+    float drive = 4.0f;
+    float shape = 0.0f;
+    float mix = 1.0f;
+    float toneCoeff = 0.0f;
+    float toneState = 0.0f;
+};
+
+class ChorusUnit final : public IEffectUnit {
+public:
+    explicit ChorusUnit(float sr) : sampleRate(sr)
+    {
+        allocateBuffer();
+        recalc();
+    }
+
+    void setSampleRate(float sr) override
+    {
+        sampleRate = sr;
+        allocateBuffer();
+        recalc();
+    }
+
+    void setParameters(const EffectParameters& p) override
+    {
+        params = p;
+        recalc();
+    }
+
+    float process(float input) override
+    {
+        if(!params.enabled || buffer.empty()) {
+            return input;
+        }
+
+        phase += phaseIncrement;
+        if(phase >= 2.0f * kPi){
+            phase -= 2.0f * kPi;
+        }
+
+        const float modulation = std::sin(phase);
+        float delaySamples = baseDelaySamples + depthSamples * modulation;
+        delaySamples = std::max(1.0f, delaySamples);
+
+        float readPos = static_cast<float>(writeIndex) - delaySamples;
+        while(readPos < 0.0f){
+            readPos += static_cast<float>(buffer.size());
+        }
+        const int readIndexA = static_cast<int>(readPos) % static_cast<int>(buffer.size());
+        const int readIndexB = (readIndexA + 1) % static_cast<int>(buffer.size());
+        const float frac = readPos - static_cast<float>(readIndexA);
+        const float delayed =
+            buffer[static_cast<std::size_t>(readIndexA)] * (1.0f - frac) +
+            buffer[static_cast<std::size_t>(readIndexB)] * frac;
+
+        buffer[writeIndex] = input + delayed * feedback;
+        writeIndex = (writeIndex + 1) % buffer.size();
+
+        const float wet = 0.5f * (input + delayed);
+        return input * (1.0f - mix) + wet * mix;
+    }
+
+    void reset() override
+    {
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+        writeIndex = 0;
+        phase = 0.0f;
+    }
+
+private:
+    void allocateBuffer()
+    {
+        const std::size_t size = static_cast<std::size_t>(sampleRate * 0.08f) + 4U; // 80ms max
+        buffer.assign(size, 0.0f);
+        writeIndex = 0;
+    }
+
+    void recalc()
+    {
+        mix = clampf(params.mix, 0.0f, 1.0f);
+        feedback = clampf(params.feedback, 0.0f, 0.45f);
+        const float baseDelayMs = clampf(params.delayMs, 2.0f, 30.0f);
+        baseDelaySamples = baseDelayMs * 0.001f * sampleRate;
+        const float maxDepthSamples = sampleRate * 0.01f; // 10ms sweep
+        depthSamples = clampf(params.depth, 0.0f, 1.0f) * maxDepthSamples;
+        const float rateHz = clampf(params.rateHz, 0.05f, 8.0f);
+        phaseIncrement = (2.0f * kPi * rateHz) / sampleRate;
+    }
+
+    float sampleRate;
+    EffectParameters params;
+    std::vector<float> buffer;
+    std::size_t writeIndex = 0;
+    float mix = 0.5f;
+    float feedback = 0.1f;
+    float baseDelaySamples = 8.0f;
+    float depthSamples = 4.0f;
+    float phase = 0.0f;
+    float phaseIncrement = 0.0f;
+};
+
+class PhaserUnit final : public IEffectUnit {
+public:
+    explicit PhaserUnit(float sr) : sampleRate(sr) {}
+
+    void setSampleRate(float sr) override
+    {
+        sampleRate = sr;
+        recalc();
+    }
+
+    void setParameters(const EffectParameters& p) override
+    {
+        params = p;
+        recalc();
+    }
+
+    float process(float input) override
+    {
+        if(!params.enabled) {
+            return input;
+        }
+
+        phase += phaseIncrement;
+        if(phase >= 2.0f * kPi){
+            phase -= 2.0f * kPi;
+        }
+
+        const float lfo = std::sin(phase);
+        const float sweep = 0.5f * (lfo + 1.0f);
+        float centerHz = 300.0f + sweepDepthHz * sweep;
+        centerHz = clampf(centerHz, 60.0f, sampleRate * 0.45f);
+
+        const float wc = std::tan(kPi * centerHz / sampleRate);
+        const float a = (1.0f - wc) / (1.0f + wc);
+
+        float x = input + feedback * feedbackSample;
+        for(std::size_t i = 0; i < stageState.size(); ++i){
+            const float y = -a * x + stageState[i];
+            stageState[i] = x + a * y;
+            x = y;
+        }
+        feedbackSample = x;
+        return input * (1.0f - mix) + x * mix;
+    }
+
+    void reset() override
+    {
+        for(std::size_t i = 0; i < stageState.size(); ++i){
+            stageState[i] = 0.0f;
+        }
+        feedbackSample = 0.0f;
+        phase = 0.0f;
+    }
+
+private:
+    void recalc()
+    {
+        mix = clampf(params.mix, 0.0f, 1.0f);
+        feedback = clampf(params.resonance, 0.0f, 0.95f);
+        sweepDepthHz = 200.0f + clampf(params.depth, 0.0f, 1.0f) * 2800.0f;
+        const float rateHz = clampf(params.rateHz, 0.05f, 6.0f);
+        phaseIncrement = (2.0f * kPi * rateHz) / sampleRate;
+    }
+
+    float sampleRate;
+    EffectParameters params;
+    std::array<float, 4> stageState{{0.0f, 0.0f, 0.0f, 0.0f}};
+    float feedbackSample = 0.0f;
+    float mix = 0.6f;
+    float feedback = 0.0f;
+    float sweepDepthHz = 1200.0f;
+    float phase = 0.0f;
+    float phaseIncrement = 0.0f;
 };
 
 class DelayUnit final : public IEffectUnit {
@@ -356,6 +629,15 @@ std::unique_ptr<IEffectUnit> makeUnit(EffectType type, float sampleRate, float m
     }
     if(type == EffectType::HighPass) {
         return std::unique_ptr<IEffectUnit>(new OnePoleHighPass(sampleRate));
+    }
+    if(type == EffectType::Drive) {
+        return std::unique_ptr<IEffectUnit>(new DriveUnit(sampleRate));
+    }
+    if(type == EffectType::Chorus) {
+        return std::unique_ptr<IEffectUnit>(new ChorusUnit(sampleRate));
+    }
+    if(type == EffectType::Phaser) {
+        return std::unique_ptr<IEffectUnit>(new PhaserUnit(sampleRate));
     }
     if(type == EffectType::Delay) {
         return std::unique_ptr<IEffectUnit>(new DelayUnit(sampleRate, maxDelaySeconds));

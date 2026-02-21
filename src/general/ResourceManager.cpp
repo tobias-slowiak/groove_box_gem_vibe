@@ -25,6 +25,25 @@
 #include "../../include/audio/SamplePack.h"
 #include "../../include/audio/InstrumentCatalog.h"
 
+namespace {
+SamplePackVoiceSettings toVoiceSettings(const InstrumentDefaults& defaults){
+	SamplePackVoiceSettings out;
+	out.attack = defaults.voice.attack;
+	out.decay = defaults.voice.decay;
+	out.sustain = defaults.voice.sustain;
+	out.release = defaults.voice.release;
+	out.repeat = defaults.voice.repeat;
+	return out;
+}
+
+void applyEffectDefaultsToChain(EffectsChain& chain, const std::vector<EffectStageDefaults>& defaults){
+	chain.clearEffects();
+	for(const auto& effect : defaults){
+		chain.addEffect(effect.type, effect.params);
+	}
+}
+}
+
 
 bool i2cDevicePresent(int bus, int address)
 {
@@ -119,8 +138,10 @@ void ResourceManager::setup(BelaContext* context){
 	mixer.reset(new Mixer(*this));
 	printf("Constructed Mixer\n");
 	keyInstrumentSamplePack.reset(new SamplePack(*this, "keyInstrument", instrumentCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	keyInstrumentSamplePack->setVoiceSettings(toVoiceSettings(instrumentCatalog.getDefaults(0)));
 	printf("Constructed keyInstrumentSamplePack\n");
 	drumSamplePack.reset(new SamplePack(*this, "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	drumSamplePack->setVoiceSettings(toVoiceSettings(drumCatalog.getDefaults(0)));
 	printf("Constructed drumSamplePack\n");
 	metronome.reset(new Metronome(*this));
 	printf("Constructed Metronome\n");
@@ -133,6 +154,11 @@ void ResourceManager::setup(BelaContext* context){
 	loopers.reset(new Loopers(*this));
 	printf("Constructed Loopers\n");
 	signalRouter.reset(new SignalRouter(*this));
+	if(keysInMelodicMode){
+		applyEffectDefaultsToChain(signalRouter->getInstrumentEffects(), instrumentCatalog.getDefaults(0).effects);
+	} else {
+		applyEffectDefaultsToChain(signalRouter->getInstrumentEffects(), drumCatalog.getDefaults(0).effects);
+	}
 	printf("Constructed SignalRouter\n");
 	recorder.reset(new Recorder(*this, "/root/Bela/Samples/Recordings/recording.wav"));
 	printf("Constructed Recorder\n");

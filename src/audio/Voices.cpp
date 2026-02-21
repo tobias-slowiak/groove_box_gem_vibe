@@ -24,6 +24,7 @@ Voice::Voice(StreamingBufferIterator& iterator, int note, float playbackRate,
 	adsr(attack, decay, sustain, release, resourceManager) {
 	assert(iteratorPtr != nullptr && "Voice ctor received null iterator");
 	assert(iterator.sampleIdentifier.first != ITERATOR_INVALID && "Voice ctor iterator invalid id");
+	iterator.setAutoReleaseOnReadEnd(!repeat);
 	adsr.init();
 	if(floatIsEqual(playbackRate, 1.0f)){
 		playbackRateIsOne = true;
@@ -32,6 +33,10 @@ Voice::Voice(StreamingBufferIterator& iterator, int note, float playbackRate,
 		leftFrame = *iterator;
 		iterator++;
 		rightFrame = *iterator;
+		if(rightFrame == END_OF_SAMPLE){
+			iterator.rewind();
+			rightFrame = leftFrame;
+		}
 	}
 }
 
@@ -46,6 +51,7 @@ Voice::Voice(Voice&& other) noexcept
 	  requestId(other.requestId),
 	  leftFrame(other.leftFrame),
 	  rightFrame(other.rightFrame),
+	  noteReleased(other.noteReleased),
 	  playbackRateIsOne(other.playbackRateIsOne),
 	  position(other.position),
 	  adsr(std::move(other.adsr)) {
@@ -64,6 +70,7 @@ Voice& Voice::operator=(Voice&& other) noexcept {
 		requestId = other.requestId;
 		leftFrame = other.leftFrame;
 		rightFrame = other.rightFrame;
+		noteReleased = other.noteReleased;
 		playbackRateIsOne = other.playbackRateIsOne;
 		position = other.position;
 		adsr = std::move(other.adsr);
@@ -73,7 +80,22 @@ Voice& Voice::operator=(Voice&& other) noexcept {
 }
 
 void Voice::noteOff(){
+	noteReleased = true;
+	if(iteratorPtr && iteratorPtr->sampleIdentifier.first != ITERATOR_INVALID){
+		iteratorPtr->setAutoReleaseOnReadEnd(true);
+	}
 	adsr.noteOff();
+}
+
+bool Voice::rewindForRepeat(){
+	if(!repeat || noteReleased){
+		return false;
+	}
+	if(iteratorPtr == nullptr || iteratorPtr->sampleIdentifier.first == ITERATOR_INVALID){
+		return false;
+	}
+	iteratorPtr->rewind();
+	return true;
 }
     
 float Voice::process(){ // TODO: unelegant with the tuple, do differently
@@ -85,13 +107,27 @@ float Voice::process(){ // TODO: unelegant with the tuple, do differently
 		return 0.0f;
 	}
 	assert(iterator.sampleIdentifier.first != ITERATOR_INVALID && "Voice::process iterator invalid id");
-	float frame = *iterator;
-	if(frame == END_OF_SAMPLE){
-		adsr.instantOff();
-		iteratorPtr = nullptr;
-		return 0.0f;
-	}
 	if(playbackRateIsOne){
+		float frame = *iterator;
+		if(frame == END_OF_SAMPLE){
+			if(!rewindForRepeat()){
+				adsr.instantOff();
+				if(iterator.sampleIdentifier.first != ITERATOR_INVALID){
+					iterator.release();
+				}
+				iteratorPtr = nullptr;
+				return 0.0f;
+			}
+			frame = *iterator;
+			if(frame == END_OF_SAMPLE){
+				adsr.instantOff();
+				if(iterator.sampleIdentifier.first != ITERATOR_INVALID){
+					iterator.release();
+				}
+				iteratorPtr = nullptr;
+				return 0.0f;
+			}
+		}
 		frame = gain * adsr.process() * frame;
 		position += 1.0;
 		iterator++;
@@ -107,9 +143,23 @@ float Voice::process(){ // TODO: unelegant with the tuple, do differently
 		iterator++;
 		rightFrame = *iterator;
 		if(rightFrame == END_OF_SAMPLE){
-			adsr.instantOff();
-			iteratorPtr = nullptr;
-			return gain * adsr.process() * leftFrame;
+			if(!rewindForRepeat()){
+				adsr.instantOff();
+				if(iterator.sampleIdentifier.first != ITERATOR_INVALID){
+					iterator.release();
+				}
+				iteratorPtr = nullptr;
+				return gain * adsr.process() * leftFrame;
+			}
+			rightFrame = *iterator;
+			if(rightFrame == END_OF_SAMPLE){
+				adsr.instantOff();
+				if(iterator.sampleIdentifier.first != ITERATOR_INVALID){
+					iterator.release();
+				}
+				iteratorPtr = nullptr;
+				return gain * adsr.process() * leftFrame;
+			}
 		}
 	}
 	position = newPosition;
@@ -145,6 +195,10 @@ void Voices::triggerVoice(StreamingBufferIterator& iterator,
 		float attack, float decay, float sustain, float release){
 	if((int)activeVoices.size() >= maxVoices) {
         // Voice stealing: remove the oldest voice
+		Voice& oldest = activeVoices.front();
+		if(oldest.iteratorPtr && oldest.iteratorPtr->sampleIdentifier.first != ITERATOR_INVALID){
+			oldest.iteratorPtr->release();
+		}
         activeVoices.erase(activeVoices.begin());
     }
 	assert(iterator.sampleIdentifier.first != ITERATOR_INVALID && "Voices::triggerVoice iterator invalid id");
@@ -160,7 +214,7 @@ void Voices::triggerOff(int note){
 		assert(i >= 0 && activeVoices.size() > static_cast<size_t>(i));
 		auto& voice = activeVoices.at(i);
 		if(voice.getNote() == note){
-			rt_printf("trying to noteOff of note %d with current voice note: %d\n", note, voice.getNote());
+			// rt_printf("trying to noteOff of note %d with current voice note: %d\n", note, voice.getNote());
 			voice.noteOff();
 		}
 	}

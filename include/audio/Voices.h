@@ -36,6 +36,7 @@ public:
 	
 private:
 	friend class Voices;
+	bool rewindForRepeat();
 	StreamingBufferIterator* iteratorPtr;
 	int note;
 	int velocity;
@@ -48,6 +49,7 @@ private:
 
 	float leftFrame = 0.0f;
 	float rightFrame = 0.0f;
+	bool noteReleased = false;
 	
 	bool playbackRateIsOne = false;
 

@@ -16,6 +16,18 @@
 #include "../../include/audio/Voices.h"
 #include <cassert>
 
+namespace {
+SamplePackVoiceSettings sanitizeVoiceSettings(const SamplePackVoiceSettings& in){
+    SamplePackVoiceSettings out = in;
+    if(out.attack < 0.0f) out.attack = 0.0f;
+    if(out.decay < 0.0f) out.decay = 0.0f;
+    if(out.sustain < 0.0f) out.sustain = 0.0f;
+    if(out.sustain > 1.0f) out.sustain = 1.0f;
+    if(out.release < 0.0f) out.release = 0.0f;
+    return out;
+}
+}
+
 
 SamplePack::SamplePack(ResourceManager& resourceManager,
             std::string samplePackName, std::string samplePackFolderPath, size_t bufferSizeInFrames)
@@ -39,6 +51,8 @@ SamplePack::SamplePack(ResourceManager& resourceManager,
     DEBUG_PRINTF("SamplePack ctor: name=%s folder=%s bufferFrames=%u\n",
         this->samplePackName.c_str(), this->samplePackFolderPath.c_str(), (unsigned int)bufferSizeInFrames);
 
+    loading.store(true, std::memory_order_release);
+    loadingIdleBlockCounter = 0;
     initWork();
 
 }
@@ -54,6 +68,8 @@ void SamplePack::taskWorkMessage(std::string& taskName, DefaultTaskMessage msg){
 //TODO: problem: when i do this 2 times for the same folder there is a problem. do voicestest twice to trigger the error.
 void SamplePack::initForFolder(std::string samplePackFolderPath){
     assert(!samplePackFolderPath.empty() && "SamplePack::initForFolder empty folder path");
+    loading.store(true, std::memory_order_release);
+    loadingIdleBlockCounter = 0;
     this->samplePackFolderPath = samplePackFolderPath;
     streamingBuffer.setFolderPath(samplePackFolderPath);
     DefaultTaskMessage msg;
@@ -182,7 +198,12 @@ void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity,
     float playbackRate = powf(2.0f, (float)(sampleIdentifier.first - closestSample.first) / 12.0f);
     StreamingBufferIterator& iterator = streamingBuffer.begin(closestSample, SBIType::Read, playbackRate);
     //DEBUG_RT_PRINTF("playbackrate %f on original sample %d, %d with chosen sample %d %d\n", playbackRate, sampleIdentifier.first, sampleIdentifier.second, closestSample.first, closestSample.second);
-    voices.triggerVoice(iterator, note, playbackRate, gain);
+    voices.triggerVoice(iterator, note, playbackRate, gain,
+        voiceSettings.repeat,
+        voiceSettings.attack,
+        voiceSettings.decay,
+        voiceSettings.sustain,
+        voiceSettings.release);
 }
 
 void SamplePack::triggerOff(int note){
@@ -193,8 +214,25 @@ int SamplePack::midiToSampleVelocity(int midiVelocity){
     return std::ceil(((float)midiVelocity / (float)127) * maxAvailableVelocity);
 }
 
+void SamplePack::setVoiceSettings(const SamplePackVoiceSettings& settings){
+    voiceSettings = sanitizeVoiceSettings(settings);
+}
+
 void SamplePack::processBlockwise(){
     streamingBuffer.processBlockwise();
+    if(loading.load(std::memory_order_acquire)){
+        const bool initBusy = initTask.isInFlight();
+        const bool streamBusy = streamingBuffer.streamerIsInFlight();
+        if(!initBusy && !streamBusy){
+            loadingIdleBlockCounter++;
+            if(loadingIdleBlockCounter >= 2){
+                loading.store(false, std::memory_order_release);
+                loadingIdleBlockCounter = 0;
+            }
+        } else {
+            loadingIdleBlockCounter = 0;
+        }
+    }
 }
 
 float SamplePack::process(){
