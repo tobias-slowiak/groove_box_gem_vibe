@@ -18,6 +18,7 @@ ModeManager::ModeManager(ResourceManager& resourceManager): resourceManager(reso
 	modeNames  = {
 					"TopMenu",
 					"Normal",
+					"InstrumentSetEditor",
 					"AllTest",
 					"BelaInterfaceTest",
 					"DisplayContextTest",
@@ -62,6 +63,9 @@ void ModeManager::render(BelaContext *context, ResourceManager& resourceManager)
 	    case Mode::Normal:
 	        renderNormal(context, resourceManager);
 	        break;
+		case Mode::InstrumentSetEditor:
+			renderInstrumentSetEditor(context, resourceManager);
+			break;
 	    case Mode::AllTest:
 	        rt_printf("ERROR: AllTest mode should not reach ModeManager::render()\n");
 	        break;
@@ -102,6 +106,8 @@ void ModeManager::render(BelaContext *context, ResourceManager& resourceManager)
 }
 
 void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceManager){
+	resourceManager.getUI().unlockStateNavigation();
+	instrumentSetEditorPrimed = false;
 
 	static size_t blocksElapsed = 0;
 	blocksElapsed++;
@@ -182,6 +188,26 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 }
 
 void ModeManager::renderNormal(BelaContext *context, ResourceManager& resourceManager){
+	resourceManager.getUI().unlockStateNavigation();
+	instrumentSetEditorPrimed = false;
+	resourceManager.processBlockwise();
+}
+
+void ModeManager::renderInstrumentSetEditor(BelaContext *context, ResourceManager& resourceManager){
+	(void)context;
+	resourceManager.keysInMelodicMode = true;
+	if(!instrumentSetEditorPrimed){
+		InstrumentSetLibrary& setLibrary = resourceManager.getInstrumentSetLibrary();
+		InstrumentCatalog& catalog = resourceManager.getInstrumentCatalog();
+		std::string folderToLoad = catalog.getFolderName(0);
+		const int activeSetIndex = setLibrary.getActiveSetIndex();
+		if(setLibrary.getEntryCount(activeSetIndex) > 0){
+			folderToLoad = setLibrary.getEntry(activeSetIndex, 0).instrumentId;
+		}
+		resourceManager.getKeyInstrumentSamplePack().initForFolder(folderToLoad);
+		instrumentSetEditorPrimed = true;
+	}
+	resourceManager.getUI().lockStateNavigation(UIStateId::SetEditor);
 	resourceManager.processBlockwise();
 }
 

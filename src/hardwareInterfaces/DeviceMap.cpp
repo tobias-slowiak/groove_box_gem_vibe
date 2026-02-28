@@ -5,8 +5,7 @@
 #include "../../include/hardwareInterfaces/DeviceMap.h"
 #include "../../include/general/ResourceManager.h"
 
-#define LAUNCHKEY_37_MK3
-#define BELA_INTERFACE_V1_GEM
+
 
 DeviceMap::DeviceMap(ResourceManager& resourceManager){
 

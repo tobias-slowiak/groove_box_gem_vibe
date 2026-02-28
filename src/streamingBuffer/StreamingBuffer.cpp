@@ -53,6 +53,16 @@ StreamingBuffer::~StreamingBuffer(){
     // chunkStates is now a vector, no manual deletion needed
 }
 
+std::string StreamingBuffer::filename(SampleIdentifier sampleIdentifier){
+    if(sampleFileMap){
+        auto it = sampleFileMap->find(sampleIdentifier);
+        if(it != sampleFileMap->end()){
+            return it->second;
+        }
+    }
+    return folderPath + "/" + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + ".wav";
+}
+
 void StreamingBuffer::taskWorkMessage(std::string& taskName, StreamingMessage msg){
 	if(taskName == bufferName + "_MTask"){
 		workMutateMessage(msg);

@@ -24,6 +24,7 @@
 #include "../../include/hardwareInterfaces/MidiFake.h"
 #include "../../include/audio/SamplePack.h"
 #include "../../include/audio/InstrumentCatalog.h"
+//compile
 
 namespace {
 SamplePackVoiceSettings toVoiceSettings(const InstrumentDefaults& defaults){
@@ -34,6 +35,15 @@ SamplePackVoiceSettings toVoiceSettings(const InstrumentDefaults& defaults){
 	out.release = defaults.voice.release;
 	out.repeat = defaults.voice.repeat;
 	return out;
+}
+
+int findCatalogIndexByFolderName(InstrumentCatalog& catalog, const std::string& folderName){
+	for(int i = 0; i < catalog.size(); ++i){
+		if(catalog.getFolderName(static_cast<size_t>(i)) == folderName){
+			return i;
+		}
+	}
+	return -1;
 }
 
 void applyEffectDefaultsToChain(EffectsChain& chain, const std::vector<EffectStageDefaults>& defaults){
@@ -137,10 +147,21 @@ void ResourceManager::setup(BelaContext* context){
 	frames.resize((int)GainId::COUNT);
 	mixer.reset(new Mixer(*this));
 	printf("Constructed Mixer\n");
-	keyInstrumentSamplePack.reset(new SamplePack(*this, "keyInstrument", instrumentCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
-	keyInstrumentSamplePack->setVoiceSettings(toVoiceSettings(instrumentCatalog.getDefaults(0)));
+	int startupInstrumentCatalogIndex = 0;
+	std::string startupInstrumentFolder = instrumentCatalog.getFolderName(0);
+	const int startupSetIndex = instrumentSetLibrary.getActiveSetIndex();
+	if(instrumentSetLibrary.getEntryCount(startupSetIndex) > 0){
+		const InstrumentSetEntry& startupEntry = instrumentSetLibrary.getEntry(startupSetIndex, 0);
+		startupInstrumentFolder = startupEntry.instrumentId;
+		const int mappedCatalogIndex = findCatalogIndexByFolderName(instrumentCatalog, startupEntry.instrumentId);
+		if(mappedCatalogIndex >= 0){
+			startupInstrumentCatalogIndex = mappedCatalogIndex;
+		}
+	}
+	keyInstrumentSamplePack.reset(new SamplePack(*this, "keyInstrument", startupInstrumentFolder, 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	keyInstrumentSamplePack->setVoiceSettings(toVoiceSettings(instrumentCatalog.getDefaults(static_cast<size_t>(startupInstrumentCatalogIndex))));
 	printf("Constructed keyInstrumentSamplePack\n");
-	drumSamplePack.reset(new SamplePack(*this, "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35)); // 6s approx 1MB. 35MB enables approx 32 simul samples
+	drumSamplePack.reset(new SamplePack(*this, "drum", drumCatalog.getFolderName(0), 44100 * 6 * 35, false)); // lazy-load drums on demand
 	drumSamplePack->setVoiceSettings(toVoiceSettings(drumCatalog.getDefaults(0)));
 	printf("Constructed drumSamplePack\n");
 	metronome.reset(new Metronome(*this));
@@ -155,7 +176,7 @@ void ResourceManager::setup(BelaContext* context){
 	printf("Constructed Loopers\n");
 	signalRouter.reset(new SignalRouter(*this));
 	if(keysInMelodicMode){
-		applyEffectDefaultsToChain(signalRouter->getInstrumentEffects(), instrumentCatalog.getDefaults(0).effects);
+		applyEffectDefaultsToChain(signalRouter->getInstrumentEffects(), instrumentCatalog.getDefaults(static_cast<size_t>(startupInstrumentCatalogIndex)).effects);
 	} else {
 		applyEffectDefaultsToChain(signalRouter->getInstrumentEffects(), drumCatalog.getDefaults(0).effects);
 	}
@@ -268,6 +289,9 @@ InstrumentCatalog& ResourceManager::getInstrumentCatalog(){
 }
 DrumCatalog& ResourceManager::getDrumCatalog(){
 	return drumCatalog;
+}
+InstrumentSetLibrary& ResourceManager::getInstrumentSetLibrary(){
+	return instrumentSetLibrary;
 }
 Mixer& ResourceManager::getMixer(){
 	return *mixer;

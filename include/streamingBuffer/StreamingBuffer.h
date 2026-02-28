@@ -137,6 +137,7 @@ public:
     ~StreamingBuffer();
 
     void setFolderPath(std::string path){folderPath = path;}
+    void setSampleFileMap(std::unordered_map<SampleIdentifier, std::string>* inSampleFileMap){ sampleFileMap = inSampleFileMap; }
 
     StreamingBufferIterator& begin(SampleIdentifier sampleIdentifier, SBIType type, float playbackRate = 1.0);
 
@@ -172,7 +173,7 @@ private:
 
     void releaseIterator(StreamingBufferIterator& iterator);
 
-    std::string filename(SampleIdentifier sampleIdentifier){return folderPath + "/" + std::to_string(sampleIdentifier.first) + "_" + std::to_string(sampleIdentifier.second) + ".wav";}
+    std::string filename(SampleIdentifier sampleIdentifier);
 
     void protectSample(SampleIdentifier sampleIdentifier);
 
@@ -204,6 +205,7 @@ private:
     ResourceManager& resourceManager;
     std::string bufferName;
     std::string folderPath;
+    std::unordered_map<SampleIdentifier, std::string>* sampleFileMap = nullptr;
     //chunk storage
     int chunkLength = DEFAULT_STREAMING_CHUNK_SIZE;
 

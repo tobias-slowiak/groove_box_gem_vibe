@@ -72,11 +72,22 @@ void AudioStreamer::workStreamMessage(StreamingMessage msg){ //stream thread onl
         return;
     }
     if(msg.type == StreamingMessageType::StreamChunk){
+        const size_t chunkLength = static_cast<size_t>(std::max(parent.chunkLength, 0));
+        if(chunkLength == 0){
+            return;
+        }
+        if(s_streamBuffer.size() < chunkLength){
+            s_streamBuffer.resize(chunkLength, END_OF_SAMPLE);
+        }
         int chunkIndexInBuffer = msg.chunkIndexInBuffer;
         int chunkIndex = msg.chunkIndex;
         int channel = 0; //maybe make stereo possible at some point
-        size_t sdFileReadStartIndex = chunkIndex * parent.chunkLength;
-        size_t sdFileReadEndIndex = sdFileReadStartIndex + parent.chunkLength;
+        if(chunkIndex < 0){
+            return;
+        }
+        const size_t safeChunkIndex = static_cast<size_t>(chunkIndex);
+        size_t sdFileReadStartIndex = safeChunkIndex * chunkLength;
+        size_t sdFileReadEndIndex = sdFileReadStartIndex + chunkLength;
         size_t sampleLengthInFrames = parent.getSampleLength(msg.sampleIdentifier);
         if(sdFileReadStartIndex >= sampleLengthInFrames){
             return;
@@ -84,14 +95,23 @@ void AudioStreamer::workStreamMessage(StreamingMessage msg){ //stream thread onl
         if(sdFileReadEndIndex > sampleLengthInFrames){
             sdFileReadEndIndex = sampleLengthInFrames;
             const size_t framesToRead = sdFileReadEndIndex - sdFileReadStartIndex;
-            for(size_t i = framesToRead; i < parent.chunkLength; i++){
-                VEC_AT(s_streamBuffer, i) = END_OF_SAMPLE;
+            for(size_t i = framesToRead; i < chunkLength; i++){
+                s_streamBuffer[i] = END_OF_SAMPLE;
             }
         }
         if(AudioFileUtilities::getSamples(parent.filename(msg.sampleIdentifier), s_streamBuffer.data(), channel, sdFileReadStartIndex, sdFileReadEndIndex) == 0) {
+            if(chunkIndexInBuffer < 0 || static_cast<size_t>(chunkIndexInBuffer) >= parent.chunks.size()){
+                DEBUG_PRINTF("AudioStreamer::workStreamMessage ignoring invalid chunkIndexInBuffer=%d (chunks=%zu) for sample %d_%d\n",
+                    chunkIndexInBuffer, parent.chunks.size(), msg.sampleIdentifier.first, msg.sampleIdentifier.second);
+                return;
+            }
             std::vector<float>& chunk = VEC_AT(parent.chunks, chunkIndexInBuffer);
-            for(size_t i = 0; i < parent.chunkLength; i++){
-                VEC_AT(chunk, i) = VEC_AT(s_streamBuffer, i);
+            const size_t copyCount = std::min(chunkLength, std::min(chunk.size(), s_streamBuffer.size()));
+            for(size_t i = 0; i < copyCount; i++){
+                chunk[i] = s_streamBuffer[i];
+            }
+            for(size_t i = copyCount; i < chunk.size(); i++){
+                chunk[i] = END_OF_SAMPLE;
             }
             VEC_AT(parent.chunkStates, chunkIndexInBuffer).chunkReady.store(true, std::memory_order_release);
         } else {

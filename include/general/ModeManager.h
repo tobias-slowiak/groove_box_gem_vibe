@@ -8,6 +8,7 @@ class ResourceManager;
 enum class Mode{
 	TopMenu,
 	Normal,
+	InstrumentSetEditor,
 	AllTest,
 	BelaInterfaceTest,
 	DisplayContextTest,
@@ -31,6 +32,8 @@ public:
 	void renderTopMenu(BelaContext* context, ResourceManager& resourceManager);
 	
 	void renderNormal(BelaContext *context, ResourceManager& resourceManager);
+
+	void renderInstrumentSetEditor(BelaContext *context, ResourceManager& resourceManager);
 	
 	void renderBelaInterfaceTest(BelaContext *context, ResourceManager& resourceManager);
 	
@@ -61,6 +64,7 @@ private:
 	ResourceManager& resourceManager;
 	BelaContext* context;
 	Mode mode;
+	bool instrumentSetEditorPrimed = false;
 	bool currentTestDone = false;
 	bool testAll = false;
 	std::vector<std::string> modeNames;

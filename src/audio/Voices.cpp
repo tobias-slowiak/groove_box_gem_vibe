@@ -185,22 +185,33 @@ float Voices::process(){
 				it->iteratorPtr->release();
 			it = activeVoices.erase(it);
 		}
-    }
+	}
     return frame;
+}
+
+bool Voices::releaseOldestVoice(){
+	if(activeVoices.empty()){
+		return false;
+	}
+	Voice& oldest = activeVoices.front();
+	if(oldest.iteratorPtr && oldest.iteratorPtr->sampleIdentifier.first != ITERATOR_INVALID){
+		oldest.iteratorPtr->release();
+	}
+	activeVoices.erase(activeVoices.begin());
+	return true;
+}
+
+void Voices::prepareForNewVoice(){
+	if(static_cast<int>(activeVoices.size()) >= maxVoices){
+		releaseOldestVoice();
+	}
 }
 
 
 void Voices::triggerVoice(StreamingBufferIterator& iterator,
 		int note, float playbackRate, float gain, bool repeat,
 		float attack, float decay, float sustain, float release){
-	if((int)activeVoices.size() >= maxVoices) {
-        // Voice stealing: remove the oldest voice
-		Voice& oldest = activeVoices.front();
-		if(oldest.iteratorPtr && oldest.iteratorPtr->sampleIdentifier.first != ITERATOR_INVALID){
-			oldest.iteratorPtr->release();
-		}
-        activeVoices.erase(activeVoices.begin());
-    }
+	prepareForNewVoice();
 	assert(iterator.sampleIdentifier.first != ITERATOR_INVALID && "Voices::triggerVoice iterator invalid id");
 	activeVoices.push_back({iterator, note, playbackRate,
 		resourceManager, gain,

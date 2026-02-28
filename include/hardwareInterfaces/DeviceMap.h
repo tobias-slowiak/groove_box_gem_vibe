@@ -10,6 +10,8 @@ class ResourceManager;
 
 //TODO: make new for launchkey 37 mk3
 
+#define LAUNCHKEY_37_MK3
+#define BELA_INTERFACE_V1_GEM
 
 //BELA Interfaces, necessary varialbes are 
 

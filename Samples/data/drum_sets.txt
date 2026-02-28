@@ -1,0 +1,27 @@
+# Drum set definitions (TAB-separated).
+# Format:
+#   set   <set_id>   <display_name>
+#   piece <role>     <instrument_id>
+#   piece <role>     <instrument_id>   <sample_filter_substring>
+#
+# Standard roles currently supported:
+# kick, side_stick, snare, clap, closed_hihat, pedal_hihat, open_hihat,
+# low_tom, mid_tom, high_tom, crash, ride, ride_bell, cowbell,
+# tambourine, shaker, triangle_closed, triangle_open
+
+set	vcsl_standard_kit	VCSL Standard Kit
+piece	kick	membranophones_struck_membranophones_bass_drum_1
+piece	snare	membranophones_struck_membranophones_snare_drum_modern_1	HitSN
+piece	closed_hihat	idiophones_struck_idiophones_hi_hat_cymbal
+piece	open_hihat	idiophones_struck_idiophones_hi_hat_cymbal
+piece	low_tom	membranophones_struck_membranophones_tom_1
+piece	mid_tom	membranophones_struck_membranophones_tom_2
+piece	high_tom	membranophones_struck_membranophones_tom_2
+piece	crash	idiophones_struck_idiophones_suspended_cymbal_1
+piece	ride	idiophones_struck_idiophones_suspended_cymbal_2
+piece	clap	idiophones_struck_idiophones_claps
+piece	cowbell	idiophones_struck_idiophones_cowbells
+piece	tambourine	idiophones_struck_idiophones_tambourine_1
+piece	shaker	idiophones_struck_idiophones_shaker_small
+piece	triangle_closed	idiophones_struck_idiophones_triangles
+piece	triangle_open	idiophones_struck_idiophones_triangles

@@ -269,9 +269,31 @@ void UI::renderDisplay(){
 	ctxt.rm.getDisplayContext().setLines(liness, textFrames, scrollBars);
 }
 
+void UI::lockStateNavigation(UIStateId lockedState){
+	stateNavigationLocked = true;
+	lockedStateId = lockedState;
+	if(ctxt.stateId != lockedStateId){
+		state = VEC_AT(states, static_cast<int>(lockedStateId));
+		ctxt.stateId = lockedStateId;
+		updateDisplay();
+	}
+}
+
+void UI::unlockStateNavigation(){
+	stateNavigationLocked = false;
+}
+
 
 
 void UI::stateSwitch(int indexShift){
+	if(stateNavigationLocked){
+		if(ctxt.stateId != lockedStateId){
+			state = VEC_AT(states, static_cast<int>(lockedStateId));
+			ctxt.stateId = lockedStateId;
+			updateDisplay();
+		}
+		return;
+	}
 	if(indexShift != 1 && indexShift != -1) throw std::runtime_error("stateSwitch() used with indexshift unequal 1 or -1");
 	int stateIndex = ((int)ctxt.stateId + indexShift) % (int)UIStateId::COUNT;
 	if(stateIndex < 0) stateIndex += (int)UIStateId::COUNT;

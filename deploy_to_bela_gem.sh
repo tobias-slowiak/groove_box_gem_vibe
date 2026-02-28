@@ -2,13 +2,16 @@
 set -euo pipefail
 
 # Bash mirror of deploy_to_bela_gem.ps1
-# Usage: ./deploy_to_bela_gem.sh [--debug] [--rebuild] [--copy-all]
+# Usage: ./deploy_to_bela_gem.sh [--debug] [--rebuild] [--copy-all] [--verbose] [--build-only]
+#        ./deploy_to_bela_gem.sh --sets-to-bela    # sync Samples/data -> Bela
+#        ./deploy_to_bela_gem.sh --sets-from-bela  # sync Bela Samples/data -> local
 
 DEBUG=0
 REBUILD=0
 COPY_ALL=0
 VERBOSE=0
 BUILD_ONLY=0
+SETS_SYNC_MODE=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -17,13 +20,25 @@ for arg in "$@"; do
     --copy-all) COPY_ALL=1 ;;
     --verbose) VERBOSE=1 ;;
     --build-only) BUILD_ONLY=1 ;;
+    --sets-to-bela)
+      if [[ -n "$SETS_SYNC_MODE" && "$SETS_SYNC_MODE" != "to_bela" ]]; then
+        echo "Choose only one of --sets-to-bela or --sets-from-bela." >&2
+        exit 1
+      fi
+      SETS_SYNC_MODE="to_bela"
+      ;;
+    --sets-from-bela)
+      if [[ -n "$SETS_SYNC_MODE" && "$SETS_SYNC_MODE" != "from_bela" ]]; then
+        echo "Choose only one of --sets-to-bela or --sets-from-bela." >&2
+        exit 1
+      fi
+      SETS_SYNC_MODE="from_bela"
+      ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-echo "Starting deployment to Bela..."
 
 BELA_IP="192.168.6.2"
 PROJECT="instrumentFromPC"
@@ -35,9 +50,14 @@ LOCAL_RENDER="${SCRIPT_DIR}/render.cpp"
 LOCAL_INCLUDE="${SCRIPT_DIR}/include"
 LOCAL_SRC="${SCRIPT_DIR}/src"
 LOCAL_U8G2="${SCRIPT_DIR}/u8g2"
+LOCAL_DATA_DIR="${SCRIPT_DIR}/Samples/data"
+LOCAL_INSTRUMENT_SETS_FILE="${LOCAL_DATA_DIR}/instrument_sets.txt"
 STATE_FILE="${SCRIPT_DIR}/.deploy_state.txt"
 
 REMOTE_USER_HOST="root@${BELA_IP}"
+REMOTE_DATA_DIR="/root/Bela/Samples/data"
+REMOTE_SETS_FILE="${REMOTE_DATA_DIR}/instrument_sets.txt"
+REMOTE_LEGACY_SETS_FILE="/root/Bela/Samples/instrument_sets.txt"
 
 require_tool() {
   local name="$1"
@@ -81,9 +101,50 @@ sync_bela_clock() {
   ssh_run "date -u -s '${now_utc}'"
 }
 
+sync_sets_to_bela() {
+  mkdir -p "$LOCAL_DATA_DIR"
+  if [[ ! -f "$LOCAL_INSTRUMENT_SETS_FILE" ]]; then
+    echo "Missing local file: $LOCAL_INSTRUMENT_SETS_FILE" >&2
+    exit 1
+  fi
+  echo "[sets] Copying Samples/data local -> Bela"
+  ssh_run "mkdir -p '$REMOTE_DATA_DIR'"
+  scp -rq "${SCP_OPTS[@]}" "${LOCAL_DATA_DIR}/." "${REMOTE_USER_HOST}:${REMOTE_DATA_DIR}/" </dev/null
+  echo "[sets] Copied ${LOCAL_DATA_DIR}/ -> ${REMOTE_DATA_DIR}/"
+}
+
+sync_sets_from_bela() {
+  mkdir -p "$LOCAL_DATA_DIR"
+  if ssh_run "[ -f '$REMOTE_SETS_FILE' ]"; then
+    :
+  elif ssh_run "[ -f '$REMOTE_LEGACY_SETS_FILE' ]"; then
+    echo "[sets] Found legacy Bela path; migrating to $REMOTE_SETS_FILE"
+    ssh_run "mkdir -p '$REMOTE_DATA_DIR' && cp '$REMOTE_LEGACY_SETS_FILE' '$REMOTE_SETS_FILE'"
+  else
+    echo "Missing remote file: $REMOTE_SETS_FILE (legacy: $REMOTE_LEGACY_SETS_FILE)" >&2
+    exit 1
+  fi
+  echo "[sets] Copying Samples/data Bela -> local"
+  scp -rq "${SCP_OPTS[@]}" "${REMOTE_USER_HOST}:${REMOTE_DATA_DIR}/." "${LOCAL_DATA_DIR}/" </dev/null
+  echo "[sets] Copied ${REMOTE_DATA_DIR}/ -> ${LOCAL_DATA_DIR}/"
+}
+
 require_tool ssh
 require_tool scp
 require_tool sha256sum
+
+if [[ -n "$SETS_SYNC_MODE" ]]; then
+  echo "[sets] Starting Samples/data sync..."
+  case "$SETS_SYNC_MODE" in
+    to_bela) sync_sets_to_bela ;;
+    from_bela) sync_sets_from_bela ;;
+    *) echo "Internal error: unknown set sync mode '$SETS_SYNC_MODE'" >&2; exit 1 ;;
+  esac
+  echo "[sets] Done."
+  exit 0
+fi
+
+echo "Starting deployment to Bela..."
 
 [[ -f "$LOCAL_RENDER" ]] || { echo "Missing file: $LOCAL_RENDER" >&2; exit 1; }
 [[ -d "$LOCAL_INCLUDE" ]] || { echo "Missing directory: $LOCAL_INCLUDE" >&2; exit 1; }
@@ -139,7 +200,7 @@ ssh_run "systemctl daemon-reload"
 
 sync_bela_clock
 
-ssh_run "mkdir -p '$REMOTE_FOLDER' '$REMOTE_FOLDER/include' '$REMOTE_FOLDER/src' '$REMOTE_FOLDER/u8g2'"
+ssh_run "mkdir -p '$REMOTE_FOLDER' '$REMOTE_FOLDER/include' '$REMOTE_FOLDER/src' '$REMOTE_FOLDER/u8g2' '$REMOTE_DATA_DIR'"
 
 if [[ "$REBUILD" -eq 1 ]]; then
   read -r -p "are you sure you want to rebuild (y/N)? " confirm1

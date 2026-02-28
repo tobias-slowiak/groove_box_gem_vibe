@@ -24,6 +24,7 @@ class IMidi;
 #include "../audio/SamplePack.h"
 #include "../audio/Mixer.h"
 #include "../audio/InstrumentCatalog.h"
+#include "../audio/InstrumentSetLibrary.h"
 #include "../ui/UI.h"
 #include "../ui/InputHandler.h"
 #include "../hardwareInterfaces/LooperLights.h"
@@ -65,6 +66,8 @@ public:
 	InstrumentCatalog& getInstrumentCatalog();
 
 	DrumCatalog& getDrumCatalog();
+
+	InstrumentSetLibrary& getInstrumentSetLibrary();
 
 	Mixer& getMixer();
 	
@@ -129,6 +132,7 @@ private:
 	std::unique_ptr<Recorder> recorder;
 	InstrumentCatalog instrumentCatalog;
 	DrumCatalog drumCatalog;
+	InstrumentSetLibrary instrumentSetLibrary;
 	
 	std::vector<float>* testSample = nullptr;
 	int testSampleSize = 0;

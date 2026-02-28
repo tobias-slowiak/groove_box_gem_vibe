@@ -1,20 +1,23 @@
 #include <Bela.h>
 #include <libraries/AudioFile/AudioFile.h>
 
-#include <vector>
-#include <string>
-#include <map>
-#include <utility>
 #include <algorithm>
+#include <cassert>
 #include <cmath>
+#include <cctype>
 #include <dirent.h>
-#include "../../include/general/DebugLog.h"
+#include <fstream>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <utility>
+#include <unistd.h>
 
+#include "../../include/general/DebugLog.h"
 #include "../../include/general/ResourceManager.h"
 #include "../../include/streamingBuffer/StreamingBuffer.h"
 #include "../../include/audio/SamplePack.h"
 #include "../../include/audio/Voices.h"
-#include <cassert>
 
 namespace {
 SamplePackVoiceSettings sanitizeVoiceSettings(const SamplePackVoiceSettings& in){
@@ -26,20 +29,59 @@ SamplePackVoiceSettings sanitizeVoiceSettings(const SamplePackVoiceSettings& in)
     if(out.release < 0.0f) out.release = 0.0f;
     return out;
 }
+
+std::string trimCopy(const std::string& in){
+    size_t start = 0;
+    while(start < in.size() && std::isspace(static_cast<unsigned char>(in[start]))){
+        ++start;
+    }
+    size_t end = in.size();
+    while(end > start && std::isspace(static_cast<unsigned char>(in[end - 1]))){
+        --end;
+    }
+    return in.substr(start, end - start);
 }
 
+std::string toLowerCopy(const std::string& in){
+    std::string out = in;
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return out;
+}
+
+int findColumnIndex(const std::vector<std::string>& header, const std::string& columnName){
+    for(size_t i = 0; i < header.size(); ++i){
+        if(header[i] == columnName){
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+}
 
 SamplePack::SamplePack(ResourceManager& resourceManager,
-            std::string samplePackName, std::string samplePackFolderPath, size_t bufferSizeInFrames)
-            :voices(resourceManager),
+            std::string samplePackName, std::string samplePackFolderPath, size_t bufferSizeInFrames, bool autoInitialize)
+            : voices(resourceManager),
             samplePackName(std::move(samplePackName)),
             samplePackFolderPath(std::move(samplePackFolderPath)),
+            vcslRootPath(resolveExistingPath("/root/Bela/Samples/VCSL-1.2.2-RC", "Samples/VCSL-1.2.2-RC")),
+            tableRootPath(resolveExistingPath("/root/Bela/Samples/bela_tables/vcsl_full", "Samples/bela_tables/vcsl_full")),
+            sampleFileMap(),
             availableSamples(),
-            availableKeys(),
+            sampleIdentifierByRelPath(),
+            attackZones(),
+            releaseZones(),
+            attackLookup(kLookupSize),
+            releaseLookup(kLookupSize),
+            attackRoundRobinCounter(kLookupSize, 0),
+            releaseRoundRobinCounter(kLookupSize, 0),
+            lastNoteVelocity(kMidiValueCount, 64),
+            hasReleaseZones(false),
             streamingBuffer(resourceManager,
                 bufferSizeInFrames,
                 voices.maxVoices,
-                this->samplePackName + "_buffer", this->samplePackFolderPath,
+                this->samplePackName + "_buffer", this->vcslRootPath,
                 availableSamples),
             initTaskName(this->samplePackName + "_ITask"),
             initTask(this, initTaskPrio, initTaskName)
@@ -48,16 +90,87 @@ SamplePack::SamplePack(ResourceManager& resourceManager,
     assert(!this->samplePackFolderPath.empty() && "SamplePack ctor samplePackFolderPath empty");
     assert(bufferSizeInFrames > 0 && "SamplePack ctor bufferSizeInFrames must be > 0");
     assert(voices.maxVoices > 0 && "SamplePack ctor maxVoices must be positive");
-    DEBUG_PRINTF("SamplePack ctor: name=%s folder=%s bufferFrames=%u\n",
-        this->samplePackName.c_str(), this->samplePackFolderPath.c_str(), (unsigned int)bufferSizeInFrames);
+    DEBUG_PRINTF("SamplePack ctor: name=%s instrument=%s tableRoot=%s sampleRoot=%s bufferFrames=%u\n",
+        this->samplePackName.c_str(), this->samplePackFolderPath.c_str(),
+        this->tableRootPath.c_str(), this->vcslRootPath.c_str(), (unsigned int)bufferSizeInFrames);
+
+    streamingBuffer.setFolderPath(vcslRootPath);
+    streamingBuffer.setSampleFileMap(&sampleFileMap);
 
     loading.store(true, std::memory_order_release);
     loadingIdleBlockCounter = 0;
-    initWork();
-
+    if(autoInitialize){
+        initWork();
+    } else {
+        loading.store(false, std::memory_order_release);
+    }
 }
 
-void SamplePack::taskWorkMessage(std::string& taskName, DefaultTaskMessage msg){
+int SamplePack::clampMidiValue(int value){
+    if(value < 0) return 0;
+    if(value >= kMidiValueCount) return kMidiValueCount - 1;
+    return value;
+}
+
+bool SamplePack::parseInt(const std::string& text, int& out){
+    try {
+        out = std::stoi(trimCopy(text));
+        return true;
+    } catch(...) {
+        out = 0;
+        return false;
+    }
+}
+
+bool SamplePack::parseFloat(const std::string& text, float& out){
+    try {
+        out = std::stof(trimCopy(text));
+        return true;
+    } catch(...) {
+        out = 0.0f;
+        return false;
+    }
+}
+
+std::vector<std::string> SamplePack::splitTabRow(const std::string& line){
+    std::vector<std::string> out;
+    std::stringstream ss(line);
+    std::string cell;
+    while(std::getline(ss, cell, '\t')){
+        out.push_back(cell);
+    }
+    if(!line.empty() && line.back() == '\t'){
+        out.push_back("");
+    }
+    return out;
+}
+
+size_t SamplePack::lookupIndex(int note, int velocity){
+    return static_cast<size_t>(clampMidiValue(note)) * kMidiValueCount + static_cast<size_t>(clampMidiValue(velocity));
+}
+
+float SamplePack::dbToLinear(float db){
+    if(db <= -90.0f){
+        return 0.0f;
+    }
+    return std::pow(10.0f, db / 20.0f);
+}
+
+SampleIdentifier SamplePack::makeSampleIdentifier(size_t sampleSlot) const {
+    const size_t maxSamples = static_cast<size_t>(kSampleIdentifierStride) * static_cast<size_t>(kSampleIdentifierStride);
+    if(sampleSlot >= maxSamples){
+        throw std::runtime_error("SamplePack: instrument has more than 16384 unique samples, unsupported");
+    }
+    const int first = static_cast<int>(sampleSlot / kSampleIdentifierStride);
+    const int second = static_cast<int>(sampleSlot % kSampleIdentifierStride);
+    return {first, second};
+}
+
+std::string SamplePack::resolveExistingPath(const std::string& preferred, const std::string& fallback) const {
+    return (::access(preferred.c_str(), F_OK) == 0) ? preferred : fallback;
+}
+
+void SamplePack::taskWorkMessage(std::string& taskName, DefaultTaskMessage){
 	if(taskName == samplePackName + "_ITask"){
 		initWork();
 		return;
@@ -65,139 +178,427 @@ void SamplePack::taskWorkMessage(std::string& taskName, DefaultTaskMessage msg){
 	throw std::runtime_error("SamplePack::taskWorkMessage invoked with task name " + taskName);
 }
 
-//TODO: problem: when i do this 2 times for the same folder there is a problem. do voicestest twice to trigger the error.
 void SamplePack::initForFolder(std::string samplePackFolderPath){
     assert(!samplePackFolderPath.empty() && "SamplePack::initForFolder empty folder path");
     loading.store(true, std::memory_order_release);
     loadingIdleBlockCounter = 0;
-    this->samplePackFolderPath = samplePackFolderPath;
-    streamingBuffer.setFolderPath(samplePackFolderPath);
+    this->samplePackFolderPath = std::move(samplePackFolderPath);
+    streamingBuffer.setFolderPath(vcslRootPath);
+    streamingBuffer.setSampleFileMap(&sampleFileMap);
     DefaultTaskMessage msg;
     initTask.pushMessage(TaskMessageTarget::TaskThread, msg);
     initTask.taskCheckAndWorkMessages();
-    //todo make some waiting functionality here that does nothing while on sleep
 }
 
-void SamplePack::initWork(){
-    streamingBuffer.clear();
-    getAvailableSamples();
-    DEBUG_PRINTF("SamplePack ctor: found %zu samples across %zu keys\n",
-        availableSamples.size(), availableKeys.size());
-    streamingBuffer.initializeForNewSamplePack(availableSamples);
-}
-
-std::unordered_map<SampleIdentifier, size_t>& SamplePack::getAvailableSamples(){
-    //TODO: maybe better do mutation on seperate thread.
-    assert(!samplePackFolderPath.empty() && "SamplePack::getAvailableSamples empty folder path");
-    DEBUG_PRINTF("SamplePack::getAvailableSamples scanning folder %s\n", samplePackFolderPath.c_str());
+void SamplePack::clearZoneState(){
     availableSamples.clear();
-    availableKeys.clear();
-    std::vector<std::string> wavFiles = listWavFiles();
-    DEBUG_PRINTF("SamplePack::getAvailableSamples: %zu wav files listed\n", wavFiles.size());
-    maxAvailableVelocity = 0;
-    for(int key = 0; key < 128; key++){
-        for(int velocity = 0; velocity < 128; velocity++){
-            SampleIdentifier sampleIdentifier = {key, velocity};
-            std::string filename = samplePackFolderPath + "/" + std::to_string(key) + "_" + std::to_string(velocity) + ".wav";
-            if(std::find(wavFiles.begin(), wavFiles.end(), filename) != wavFiles.end()){
-                if(velocity > maxAvailableVelocity) maxAvailableVelocity = velocity;
-                int frames = AudioFileUtilities::getNumFrames(filename);
-                if(frames > 0){
-                    //DEBUG_PRINTF("initializing %d frames for sample %d %d\n", frames, sampleIdentifier.first, sampleIdentifier.second);
-                    availableSamples[sampleIdentifier] = static_cast<size_t>(frames);
-                    availableKeys.insert(key);
-                } else {
-                    rt_printf("SamplePack: unable to read frames for %s (error %d), skipping\n", filename.c_str(), frames);
+    sampleFileMap.clear();
+    sampleIdentifierByRelPath.clear();
+    attackZones.clear();
+    releaseZones.clear();
+    hasReleaseZones = false;
+
+    for(auto& cell : attackLookup){
+        cell.clear();
+    }
+    for(auto& cell : releaseLookup){
+        cell.clear();
+    }
+    std::fill(attackRoundRobinCounter.begin(), attackRoundRobinCounter.end(), 0u);
+    std::fill(releaseRoundRobinCounter.begin(), releaseRoundRobinCounter.end(), 0u);
+    std::fill(lastNoteVelocity.begin(), lastNoteVelocity.end(), 64);
+}
+
+std::string SamplePack::resolveZoneTablePath(const std::string& instrumentId) const{
+    if(instrumentId.size() >= 10 && instrumentId.find(".zones.tsv") != std::string::npos){
+        return instrumentId;
+    }
+
+    const std::string indexPath = tableRootPath + "/instruments.tsv";
+    std::ifstream indexFile(indexPath);
+    if(!indexFile){
+        throw std::runtime_error("SamplePack: cannot open instruments index at " + indexPath);
+    }
+
+    std::string line;
+    if(!std::getline(indexFile, line)){
+        throw std::runtime_error("SamplePack: instruments.tsv is empty: " + indexPath);
+    }
+    std::vector<std::string> header = splitTabRow(line);
+    const int instrumentIdIndex = findColumnIndex(header, "instrument_id");
+    const int zonesFileIndex = findColumnIndex(header, "zones_file");
+    if(instrumentIdIndex < 0 || zonesFileIndex < 0){
+        throw std::runtime_error("SamplePack: instruments.tsv missing required columns instrument_id/zones_file");
+    }
+
+    while(std::getline(indexFile, line)){
+        if(trimCopy(line).empty()){
+            continue;
+        }
+        const std::vector<std::string> row = splitTabRow(line);
+        if(static_cast<int>(row.size()) <= std::max(instrumentIdIndex, zonesFileIndex)){
+            continue;
+        }
+        if(row[static_cast<size_t>(instrumentIdIndex)] != instrumentId){
+            continue;
+        }
+        const std::string zonesRelPath = trimCopy(row[static_cast<size_t>(zonesFileIndex)]);
+        if(zonesRelPath.empty()){
+            break;
+        }
+        return tableRootPath + "/" + zonesRelPath;
+    }
+
+    throw std::runtime_error("SamplePack: instrument_id not found in instruments.tsv: " + instrumentId);
+}
+
+void SamplePack::loadZonesFromFile(const std::string& zoneTablePath){
+    std::ifstream zoneFile(zoneTablePath);
+    if(!zoneFile){
+        throw std::runtime_error("SamplePack: cannot open zones file " + zoneTablePath);
+    }
+
+    std::string line;
+    if(!std::getline(zoneFile, line)){
+        throw std::runtime_error("SamplePack: zones file is empty " + zoneTablePath);
+    }
+    const std::vector<std::string> header = splitTabRow(line);
+
+    const int sampleIndex = findColumnIndex(header, "sample_relpath");
+    const int lokeyIndex = findColumnIndex(header, "lokey");
+    const int hikeyIndex = findColumnIndex(header, "hikey");
+    const int lovelIndex = findColumnIndex(header, "lovel");
+    const int hivelIndex = findColumnIndex(header, "hivel");
+    const int keycenterIndex = findColumnIndex(header, "pitch_keycenter");
+    const int tuneIndex = findColumnIndex(header, "tune_cents");
+    const int volumeIndex = findColumnIndex(header, "volume_db");
+    const int triggerIndex = findColumnIndex(header, "trigger");
+    const int offsetIndex = findColumnIndex(header, "offset");
+    const int ampVeltrackIndex = findColumnIndex(header, "amp_veltrack");
+
+    if(sampleIndex < 0){
+        throw std::runtime_error("SamplePack: zones file missing sample_relpath: " + zoneTablePath);
+    }
+
+    auto getCell = [](const std::vector<std::string>& row, int index) -> std::string {
+        if(index < 0){
+            return "";
+        }
+        const size_t safeIndex = static_cast<size_t>(index);
+        if(safeIndex >= row.size()){
+            return "";
+        }
+        return row[safeIndex];
+    };
+
+    while(std::getline(zoneFile, line)){
+        if(trimCopy(line).empty()){
+            continue;
+        }
+        const std::vector<std::string> row = splitTabRow(line);
+        std::string sampleRelPath = trimCopy(getCell(row, sampleIndex));
+        if(sampleRelPath.empty()){
+            continue;
+        }
+
+        auto idIt = sampleIdentifierByRelPath.find(sampleRelPath);
+        SampleIdentifier sampleIdentifier;
+        if(idIt == sampleIdentifierByRelPath.end()){
+            sampleIdentifier = makeSampleIdentifier(sampleIdentifierByRelPath.size());
+            sampleIdentifierByRelPath[sampleRelPath] = sampleIdentifier;
+
+            const std::string absolutePath = vcslRootPath + "/" + sampleRelPath;
+            const int numFrames = AudioFileUtilities::getNumFrames(absolutePath);
+            if(numFrames <= 0){
+                rt_printf("SamplePack: unable to read frames for %s, skipping referenced zones\n", absolutePath.c_str());
+                sampleIdentifierByRelPath.erase(sampleRelPath);
+                continue;
+            }
+            sampleFileMap[sampleIdentifier] = absolutePath;
+            availableSamples[sampleIdentifier] = static_cast<size_t>(numFrames);
+        } else {
+            sampleIdentifier = idIt->second;
+            if(availableSamples.find(sampleIdentifier) == availableSamples.end()){
+                continue;
+            }
+        }
+
+        int lokey = 0;
+        int hikey = 127;
+        int lovel = 0;
+        int hivel = 127;
+        int keycenter = 60;
+        int offset = 0;
+        float tune = 0.0f;
+        float volumeDb = 0.0f;
+        float ampVeltrack = 100.0f;
+
+        parseInt(getCell(row, lokeyIndex), lokey);
+        parseInt(getCell(row, hikeyIndex), hikey);
+        parseInt(getCell(row, lovelIndex), lovel);
+        parseInt(getCell(row, hivelIndex), hivel);
+        if(!parseInt(getCell(row, keycenterIndex), keycenter)){
+            keycenter = lokey;
+        }
+        parseInt(getCell(row, offsetIndex), offset);
+        parseFloat(getCell(row, tuneIndex), tune);
+        parseFloat(getCell(row, volumeIndex), volumeDb);
+        parseFloat(getCell(row, ampVeltrackIndex), ampVeltrack);
+
+        lokey = clampMidiValue(lokey);
+        hikey = clampMidiValue(hikey);
+        if(hikey < lokey) hikey = lokey;
+        lovel = clampMidiValue(lovel);
+        hivel = clampMidiValue(hivel);
+        if(hivel < lovel) hivel = lovel;
+        keycenter = clampMidiValue(keycenter);
+        if(offset < 0) offset = 0;
+
+        ZoneEntry zone;
+        zone.sampleIdentifier = sampleIdentifier;
+        zone.lokey = lokey;
+        zone.hikey = hikey;
+        zone.lovel = lovel;
+        zone.hivel = hivel;
+        zone.pitchKeycenter = keycenter;
+        zone.tuneCents = tune;
+        zone.volumeDb = volumeDb;
+        zone.ampVeltrack = std::max(0.0f, std::min(100.0f, ampVeltrack));
+        zone.offset = offset;
+
+        const std::string triggerValue = toLowerCopy(trimCopy(getCell(row, triggerIndex)));
+        if(triggerValue.find(kReleaseTrigger) != std::string::npos){
+            const size_t zoneIndex = releaseZones.size();
+            if(zoneIndex > static_cast<size_t>(std::numeric_limits<uint16_t>::max())){
+                throw std::runtime_error("SamplePack: too many release zones for uint16 lookup indices");
+            }
+            releaseZones.push_back(zone);
+            for(int note = zone.lokey; note <= zone.hikey; ++note){
+                for(int vel = zone.lovel; vel <= zone.hivel; ++vel){
+                    releaseLookup[lookupIndex(note, vel)].push_back(static_cast<uint16_t>(zoneIndex));
+                }
+            }
+        } else {
+            const size_t zoneIndex = attackZones.size();
+            if(zoneIndex > static_cast<size_t>(std::numeric_limits<uint16_t>::max())){
+                throw std::runtime_error("SamplePack: too many attack zones for uint16 lookup indices");
+            }
+            attackZones.push_back(zone);
+            for(int note = zone.lokey; note <= zone.hikey; ++note){
+                for(int vel = zone.lovel; vel <= zone.hivel; ++vel){
+                    attackLookup[lookupIndex(note, vel)].push_back(static_cast<uint16_t>(zoneIndex));
                 }
             }
         }
     }
-    if(availableSamples.size() != wavFiles.size()) throw std::runtime_error("SamplePack: there are files that are not in the right naming convention note_velocity.wav!!");
-    DEBUG_PRINTF("SamplePack::getAvailableSamples: usable samples=%zu keys=%zu\n with max Velocity: %d",
-        availableSamples.size(), availableKeys.size(), maxAvailableVelocity);
+
+    hasReleaseZones = !releaseZones.empty();
+}
+
+bool SamplePack::parseLegacyFilename(const std::string& filename, int& key, int& velocity){
+    key = 0;
+    velocity = 0;
+    if(filename.size() < 6){
+        return false;
+    }
+    const std::string suffix = ".wav";
+    if(filename.substr(filename.size() - suffix.size()) != suffix){
+        return false;
+    }
+
+    const std::string stem = filename.substr(0, filename.size() - suffix.size());
+    const size_t separator = stem.rfind('_');
+    if(separator == std::string::npos){
+        return false;
+    }
+
+    int parsedKey = 0;
+    int parsedVelocity = 0;
+    if(!parseInt(stem.substr(0, separator), parsedKey)){
+        return false;
+    }
+    if(!parseInt(stem.substr(separator + 1), parsedVelocity)){
+        return false;
+    }
+    if(parsedKey < 0 || parsedKey >= kMidiValueCount || parsedVelocity < 0 || parsedVelocity >= kMidiValueCount){
+        return false;
+    }
+
+    key = parsedKey;
+    velocity = parsedVelocity;
+    return true;
+}
+
+bool SamplePack::loadLegacyNoteVelocityFolder(){
+    if(samplePackFolderPath.empty()){
+        return false;
+    }
+    if(::access(samplePackFolderPath.c_str(), F_OK) != 0){
+        return false;
+    }
+
+    DIR* dir = opendir(samplePackFolderPath.c_str());
+    if(!dir){
+        return false;
+    }
+
+    bool loadedAny = false;
+    struct dirent* entry;
+    while((entry = readdir(dir)) != nullptr){
+        const std::string fileName = entry->d_name;
+        int key = 0;
+        int velocity = 0;
+        if(!parseLegacyFilename(fileName, key, velocity)){
+            continue;
+        }
+
+        const SampleIdentifier sampleIdentifier{key, velocity};
+        const std::string fullPath = samplePackFolderPath + "/" + fileName;
+        const int numFrames = AudioFileUtilities::getNumFrames(fullPath);
+        if(numFrames <= 0){
+            continue;
+        }
+
+        sampleFileMap[sampleIdentifier] = fullPath;
+        availableSamples[sampleIdentifier] = static_cast<size_t>(numFrames);
+
+        ZoneEntry zone;
+        zone.sampleIdentifier = sampleIdentifier;
+        zone.lokey = key;
+        zone.hikey = key;
+        zone.lovel = velocity;
+        zone.hivel = velocity;
+        zone.pitchKeycenter = key;
+        zone.tuneCents = 0.0f;
+        zone.volumeDb = 0.0f;
+        zone.ampVeltrack = 100.0f;
+        zone.offset = 0;
+        const size_t zoneIndex = attackZones.size();
+        attackZones.push_back(zone);
+        attackLookup[lookupIndex(key, velocity)].push_back(static_cast<uint16_t>(zoneIndex));
+        loadedAny = true;
+    }
+
+    closedir(dir);
+    hasReleaseZones = false;
+    return loadedAny;
+}
+
+void SamplePack::initWork(){
+    streamingBuffer.clear();
+    clearZoneState();
+    getAvailableSamples();
+    DEBUG_PRINTF("SamplePack::initWork instrument=%s usableSamples=%zu attackZones=%zu releaseZones=%zu\n",
+        samplePackFolderPath.c_str(), availableSamples.size(), attackZones.size(), releaseZones.size());
+    streamingBuffer.initializeForNewSamplePack(availableSamples);
+}
+
+std::unordered_map<SampleIdentifier, size_t>& SamplePack::getAvailableSamples(){
+    if(!availableSamples.empty()){
+        return availableSamples;
+    }
+    assert(!samplePackFolderPath.empty() && "SamplePack::getAvailableSamples empty instrument id");
+
+    bool loaded = false;
+    if(samplePackFolderPath.find('/') != std::string::npos){
+        loaded = loadLegacyNoteVelocityFolder();
+    }
+    if(!loaded){
+        const std::string zoneTablePath = resolveZoneTablePath(samplePackFolderPath);
+        loadZonesFromFile(zoneTablePath);
+        loaded = true;
+    }
+
+    if(availableSamples.empty()){
+        throw std::runtime_error("SamplePack: no playable samples for instrument " + samplePackFolderPath);
+    }
+    if(attackZones.empty()){
+        throw std::runtime_error("SamplePack: no attack zones for instrument " + samplePackFolderPath);
+    }
     return availableSamples;
 }
 
-
 std::vector<std::string> SamplePack::listWavFiles() {
-    assert(!samplePackFolderPath.empty() && "SamplePack::listWavFiles empty folder path");
-    //printf("Listing WAV files in folder: %s\n", samplePackFolderPath.c_str());
     std::vector<std::string> result;
-    DIR* dir = opendir(samplePackFolderPath.c_str());
-    if (dir == nullptr) return result;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name.size() >= 4 && name.substr(name.size() - 4) == ".wav") {
-            result.push_back(samplePackFolderPath + "/" + name);
-        }
+    result.reserve(sampleFileMap.size());
+    for(const auto& entry : sampleFileMap){
+        result.push_back(entry.second);
     }
-    //printf("Found WAV files: %d\n", result.size());
-
-    closedir(dir);
+    std::sort(result.begin(), result.end());
     return result;
 }
 
 SampleIdentifier SamplePack::findClosestSample(SampleIdentifier sampleIdentifier){
-    assert(!availableSamples.empty() && "SamplePack::findClosestSample no available samples");
-    assert(!availableKeys.empty() && "SamplePack::findClosestSample no available keys");
-    assert(sampleIdentifier.first >= 0 && sampleIdentifier.first < 128 && "SamplePack::findClosestSample key out of MIDI range");
-    assert(sampleIdentifier.second >= 0 && sampleIdentifier.second < 128 && "SamplePack::findClosestSample velocity out of MIDI range");
-    int largerKey, smallerKey, bestKey;
-    largerKey = smallerKey = bestKey = sampleIdentifier.first;
-    //find closest key available
-    while(true){
-        auto keyIt = availableKeys.find(smallerKey);
-        if(keyIt != availableKeys.end()){
-            bestKey = smallerKey;
-            break;
-        }
-        keyIt = availableKeys.find(largerKey);
-        if(keyIt != availableKeys.end()){
-            bestKey = largerKey;
-            break;
-        }
-        smallerKey--;
-        assert(smallerKey >= 0 && "SamplePack::findClosestSample went out of bounds low key");
-        largerKey++;
-        assert(largerKey <= 256 && "SamplePack::findClosestSample went out of bounds high key");
+    if(availableSamples.empty()){
+        throw std::runtime_error("SamplePack::findClosestSample no available samples");
     }
-    int smallerVelocity, largerVelocity, bestVelocity;
-    smallerVelocity = largerVelocity = bestVelocity = sampleIdentifier.second;
-    while(smallerVelocity != 0 || largerVelocity != 256){
-        auto it = availableSamples.find({bestKey, smallerVelocity});
-        if (it != availableSamples.end()) {
-            bestVelocity = smallerVelocity;
-            break;
-        }
-        it = availableSamples.find({bestKey, largerVelocity});
-        if (it != availableSamples.end()) {
-            bestVelocity = largerVelocity;
-            break;
-        }
-        smallerVelocity--;
-        if(smallerVelocity < 0) smallerVelocity = 0;
-        largerVelocity++;
-        if(largerVelocity > 256) largerVelocity = 256;
+    auto exactIt = availableSamples.find(sampleIdentifier);
+    if(exactIt != availableSamples.end()){
+        return sampleIdentifier;
     }
-    return {bestKey, bestVelocity};
+    SampleIdentifier best = availableSamples.begin()->first;
+    int bestDistance = std::abs(sampleIdentifier.first - best.first) + std::abs(sampleIdentifier.second - best.second);
+    for(const auto& sample : availableSamples){
+        const int distance =
+            std::abs(sampleIdentifier.first - sample.first.first) +
+            std::abs(sampleIdentifier.second - sample.first.second);
+        if(distance < bestDistance){
+            bestDistance = distance;
+            best = sample.first;
+        }
+    }
+    return best;
 }
 
-void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity, float explicitGain){
-    assert(!availableSamples.empty() && "SamplePack::triggerVoice no available samples");
-    assert(note >= 0 && note < 128 && "SamplePack::triggerVoice key out of MIDI range");
-    assert(midiVelocity >= 0 && midiVelocity < 128 && "SamplePack::triggerVoice velocity out of MIDI range");
-    assert(midiVelocity > 0 && "SamplePack::triggerVoice triggered with vel==0");
-    if(!gainFromVelocity){
-        assert(explicitGain >= 0.0f && "SamplePack::triggerVoice explicitGain must be non-negative");
+const SamplePack::ZoneIndexList& SamplePack::resolveZoneIndices(int note, int velocity, bool release) const {
+    static ZoneIndexList empty;
+    const std::vector<ZoneIndexList>& lookup = release ? releaseLookup : attackLookup;
+    note = clampMidiValue(note);
+    velocity = clampMidiValue(velocity);
+
+    const ZoneIndexList& direct = lookup[lookupIndex(note, velocity)];
+    if(!direct.empty()){
+        return direct;
     }
-    float gain = gainFromVelocity ? (static_cast<float>(midiVelocity) / 127.0f) : explicitGain;
-    SampleIdentifier sampleIdentifier{note, midiToSampleVelocity(midiVelocity)};
-    SampleIdentifier closestSample = findClosestSample(sampleIdentifier);
-    assert(availableSamples.find(closestSample) != availableSamples.end() && "SamplePack::triggerVoice closestSample not in availableSamples");
-    float playbackRate = powf(2.0f, (float)(sampleIdentifier.first - closestSample.first) / 12.0f);
-    StreamingBufferIterator& iterator = streamingBuffer.begin(closestSample, SBIType::Read, playbackRate);
-    //DEBUG_RT_PRINTF("playbackrate %f on original sample %d, %d with chosen sample %d %d\n", playbackRate, sampleIdentifier.first, sampleIdentifier.second, closestSample.first, closestSample.second);
+
+    for(int radius = 1; radius < kMidiValueCount; ++radius){
+        const int noteLow = std::max(0, note - radius);
+        const int noteHigh = std::min(kMidiValueCount - 1, note + radius);
+        const int velLow = std::max(0, velocity - radius);
+        const int velHigh = std::min(kMidiValueCount - 1, velocity + radius);
+        for(int n = noteLow; n <= noteHigh; ++n){
+            for(int v = velLow; v <= velHigh; ++v){
+                const ZoneIndexList& candidate = lookup[lookupIndex(n, v)];
+                if(!candidate.empty()){
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    return empty;
+}
+
+void SamplePack::triggerZone(const ZoneEntry& zone, int note, int midiVelocity, bool gainFromVelocity, float explicitGain){
+    const float semitoneDelta =
+        static_cast<float>(note - zone.pitchKeycenter) +
+        (zone.tuneCents / 100.0f);
+    const float playbackRate = std::pow(2.0f, semitoneDelta / 12.0f);
+
+    voices.prepareForNewVoice();
+    StreamingBufferIterator& iterator = streamingBuffer.begin(zone.sampleIdentifier, SBIType::Read, playbackRate);
+    if(zone.offset > 0){
+        iterator.seek(static_cast<size_t>(zone.offset));
+    }
+
+    float gain = explicitGain;
+    if(gainFromVelocity){
+        const float velocityNorm = static_cast<float>(clampMidiValue(midiVelocity)) / 127.0f;
+        const float velTrack = std::max(0.0f, std::min(zone.ampVeltrack / 100.0f, 1.0f));
+        gain = (1.0f - velTrack) + (velTrack * velocityNorm);
+    }
+    gain *= dbToLinear(zone.volumeDb);
+
     voices.triggerVoice(iterator, note, playbackRate, gain,
         voiceSettings.repeat,
         voiceSettings.attack,
@@ -206,12 +607,59 @@ void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity,
         voiceSettings.release);
 }
 
+void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity, float explicitGain){
+    if(availableSamples.empty()){
+        return;
+    }
+    note = clampMidiValue(note);
+    midiVelocity = clampMidiValue(midiVelocity);
+    if(midiVelocity <= 0){
+        return;
+    }
+    if(!gainFromVelocity && explicitGain < 0.0f){
+        return;
+    }
+
+    lastNoteVelocity[static_cast<size_t>(note)] = midiVelocity;
+    const ZoneIndexList& zoneIndices = resolveZoneIndices(note, midiVelocity, false);
+    if(zoneIndices.empty()){
+        return;
+    }
+
+    const size_t rrCell = lookupIndex(note, midiVelocity);
+    uint32_t& rr = attackRoundRobinCounter[rrCell];
+    const uint16_t zoneIndex = zoneIndices[static_cast<size_t>(rr % zoneIndices.size())];
+    ++rr;
+    if(zoneIndex >= attackZones.size()){
+        return;
+    }
+    triggerZone(attackZones[zoneIndex], note, midiVelocity, gainFromVelocity, explicitGain);
+}
+
 void SamplePack::triggerOff(int note){
-    voices.triggerOff(note);
+    note = clampMidiValue(note);
+
+    if(hasReleaseZones){
+        const int releaseVelocity = lastNoteVelocity[static_cast<size_t>(note)];
+        const ZoneIndexList& releaseZoneIndices = resolveZoneIndices(note, releaseVelocity, true);
+        if(!releaseZoneIndices.empty()){
+            const size_t rrCell = lookupIndex(note, releaseVelocity);
+            uint32_t& rr = releaseRoundRobinCounter[rrCell];
+            const uint16_t zoneIndex = releaseZoneIndices[static_cast<size_t>(rr % releaseZoneIndices.size())];
+            ++rr;
+            if(zoneIndex < releaseZones.size()){
+                triggerZone(releaseZones[zoneIndex], note, releaseVelocity, true, 1.0f);
+            }
+        }
+    }
+
+    if(voiceSettings.repeat || voiceSettings.release > 0.0f){
+        voices.triggerOff(note);
+    }
 }
 
 int SamplePack::midiToSampleVelocity(int midiVelocity){
-    return std::ceil(((float)midiVelocity / (float)127) * maxAvailableVelocity);
+    return clampMidiValue(midiVelocity);
 }
 
 void SamplePack::setVoiceSettings(const SamplePackVoiceSettings& settings){

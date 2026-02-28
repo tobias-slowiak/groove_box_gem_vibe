@@ -5,12 +5,21 @@
 #include <cassert>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 //compiel
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/DisplayContextReal.h"
 #include "../../include/general/ResourceManager.h"
 #include "../../include/general/DebugLog.h"
 #include "../../include/general/TaskWrapper.h"
+
+namespace {
+uint64_t steadyNowNs(){
+    using namespace std::chrono;
+    return static_cast<uint64_t>(
+        duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count());
+}
+}
 
 
 
@@ -50,10 +59,11 @@ DisplayContextReal::DisplayContextReal(ResourceManager& resourceManager, std::ve
 		  NUM_LINES(numLines),
 		  FONT((numLines == 3) ? u8g2_font_10x20_tf : (numLines == 4) ? u8g2_font_9x15B_tf : u8g2_font_6x12_tf),
 		  CHARACTER_HEIGHT([numLines]{ if(numLines == 3) return 20; else if(numLines == 4) return 15; else return 12; }()),
-		  CHARACTER_WIDTH([numLines]{ if(numLines == 3) return 10; else if(numLines == 4) return 9; else return 6; }()),
-		  lines(std::vector<std::vector<std::string>>{std::vector<std::string>(NUM_LINES,""), std::vector<std::string>(NUM_LINES,"")}),
-		  u8g2s(u8g2s),
-		  renderTask(this, 70, "renderTask"){
+			  CHARACTER_WIDTH([numLines]{ if(numLines == 3) return 10; else if(numLines == 4) return 9; else return 6; }()),
+			  lines(std::vector<std::vector<std::string>>{std::vector<std::string>(NUM_LINES,""), std::vector<std::string>(NUM_LINES,"")}),
+			  u8g2s(u8g2s),
+			  renderTask(this, 70, "renderTask"),
+              r_marqueeStates(std::vector<MarqueeState>(2)){
 	r_lines = lines;
 	if(numLines < 3 || numLines > 5){
 		throw std::runtime_error("DisplayContextReal: invalid display parameters");
@@ -74,6 +84,30 @@ void DisplayContextReal::initDisplayContext() {
 
 void DisplayContextReal::processBlockwise() {
 	renderTask.taskCheckAndWorkMessages();
+    if(!marqueeAnimationNeeded.load(std::memory_order_acquire)){
+        return;
+    }
+
+    const uint64_t nowNs = steadyNowNs();
+    if(nowNs - marqueeLastTickEnqueueNs < MARQUEE_STEP_NS){
+        return;
+    }
+
+    bool expectedPending = false;
+    if(!marqueeTickPending.compare_exchange_strong(expectedPending, true, std::memory_order_acq_rel)){
+        return;
+    }
+
+    DisplayMessage tickMsg;
+    tickMsg.tickOnly = true;
+    try{
+        renderTask.pushMessage(TaskMessageTarget::TaskThread, tickMsg);
+        marqueeLastTickEnqueueNs = nowNs;
+        renderTask.taskCheckAndWorkMessages();
+    } catch(const std::runtime_error&){
+        // Never crash due to marquee animation pressure; skip this frame and retry later.
+        marqueeTickPending.store(false, std::memory_order_release);
+    }
 }
 
 void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines){
@@ -114,6 +148,7 @@ void DisplayContextReal::sendTaskMessage(){
 	msg.progress = progress;
 	msg.textFrames = textFrames;
 	msg.scrollBars = scrollBars;
+    msg.tickOnly = false;
     msg.waveformOverlayEnabled = waveformOverlayEnabled;
     msg.waveform = waveform;
     msg.waveformSliceStartNormalized = waveformSliceStartNormalized;
@@ -153,6 +188,8 @@ void DisplayContextReal::setWaveformOverlay(bool enabled,
 
 
 void DisplayContextReal::renderDisplay() {
+    const uint64_t nowNs = steadyNowNs();
+    r_hasMarqueeAnimation = false;
 	for(int display = 0; display < 2; display++){
 	    assert(u8g2s.size() > static_cast<size_t>(display));
 	    U8G2* u8g2 = u8g2s.at(display);
@@ -160,10 +197,16 @@ void DisplayContextReal::renderDisplay() {
 	    	u8g2->clearDisplay();
 	    }
 	    u8g2->clearBuffer();
-        if(display == 0 && r_waveformOverlayEnabled){
-            const int midY = SCREEN_HEIGHT / 2;
-            const int maxAmp = std::max(1, SCREEN_HEIGHT / 2 - 2);
-            if(!r_waveform.empty()){
+	        if(display == 0 && r_waveformOverlayEnabled){
+                if(r_marqueeStates.size() > static_cast<size_t>(display)){
+                    r_marqueeStates.at(display).active = false;
+                    r_marqueeStates.at(display).key.clear();
+                    r_marqueeStates.at(display).offset = 0;
+                    r_marqueeStates.at(display).lastStepNs = nowNs;
+                }
+	            const int midY = SCREEN_HEIGHT / 2;
+	            const int maxAmp = std::max(1, SCREEN_HEIGHT / 2 - 2);
+	            if(!r_waveform.empty()){
                 for(int x = 0; x < SCREEN_WIDTH; ++x){
                     size_t waveformIndex = 0;
                     if(SCREEN_WIDTH > 1 && r_waveform.size() > 1){
@@ -197,11 +240,75 @@ void DisplayContextReal::renderDisplay() {
             u8g2->drawBox(markerX - 1, 0, 3, 5);
             u8g2->sendBuffer();
             continue;
-        }
+	        }
 
 	    // Draw text lines
 	    assert(r_lines.size() > static_cast<size_t>(display));
-	    auto& displayLines = r_lines.at(display);
+	    std::vector<std::string> displayLines = r_lines.at(display);
+		const bool hasScrollBar = r_scrollBars.size() > static_cast<size_t>(display) &&
+			r_scrollBars.at(display).enabled;
+        bool displayHasActiveMarquee = false;
+        if(r_textFrames.size() > static_cast<size_t>(display)){
+            const std::vector<TextFrame>& textFramesOnThisDisplay = r_textFrames.at(display);
+            const int rightPadding = hasScrollBar ? 8 : 2;
+            for(const TextFrame& frame : textFramesOnThisDisplay){
+                if(frame.startChar <= 0){
+                    continue;
+                }
+                if(frame.textLine < 0 || static_cast<size_t>(frame.textLine) >= displayLines.size()){
+                    continue;
+                }
+                const int x = frame.startChar * CHARACTER_WIDTH;
+                const int frameWidthPx = std::max(1, SCREEN_WIDTH - rightPadding - x);
+                const int frameChars = std::max(1, frameWidthPx / CHARACTER_WIDTH);
+
+                std::string& lineText = VEC_AT(displayLines, frame.textLine);
+                const int prefixLen = std::max(0, std::min(frame.startChar, static_cast<int>(lineText.size())));
+                const std::string prefix = lineText.substr(0, static_cast<size_t>(prefixLen));
+                const std::string value = lineText.substr(static_cast<size_t>(prefixLen));
+                if(static_cast<int>(value.size()) <= frameChars){
+                    continue;
+                }
+
+                if(r_marqueeStates.size() <= static_cast<size_t>(display)){
+                    r_marqueeStates.resize(static_cast<size_t>(display) + 1);
+                }
+                MarqueeState& marquee = r_marqueeStates.at(display);
+                const std::string marqueeKey =
+                    std::to_string(frame.textLine) + "|" +
+                    std::to_string(frame.startChar) + "|" +
+                    std::to_string(frameChars) + "|" + value;
+                if(!marquee.active || marquee.key != marqueeKey){
+                    marquee.active = true;
+                    marquee.key = marqueeKey;
+                    marquee.offset = 0;
+                    marquee.lastStepNs = (nowNs > MARQUEE_STEP_NS) ? (nowNs - MARQUEE_STEP_NS) : 0;
+                }
+
+                const size_t cycleLength = value.size() + static_cast<size_t>(MARQUEE_GAP_CHARS);
+                while(nowNs >= marquee.lastStepNs + MARQUEE_STEP_NS){
+                    marquee.lastStepNs += MARQUEE_STEP_NS;
+                    marquee.offset = (marquee.offset + 1) % cycleLength;
+                }
+
+                std::string looped = value + std::string(MARQUEE_GAP_CHARS, ' ') + value;
+                while(looped.size() < marquee.offset + static_cast<size_t>(frameChars)){
+                    looped += std::string(MARQUEE_GAP_CHARS, ' ');
+                    looped += value;
+                }
+
+                lineText = prefix + looped.substr(marquee.offset, static_cast<size_t>(frameChars));
+                displayHasActiveMarquee = true;
+                r_hasMarqueeAnimation = true;
+            }
+        }
+        if(!displayHasActiveMarquee && r_marqueeStates.size() > static_cast<size_t>(display)){
+            r_marqueeStates.at(display).active = false;
+            r_marqueeStates.at(display).key.clear();
+            r_marqueeStates.at(display).offset = 0;
+            r_marqueeStates.at(display).lastStepNs = nowNs;
+        }
+
 	    for (int line = 0; line < NUM_LINES; ++line) {
 	        assert(displayLines.size() > static_cast<size_t>(line));
 	        u8g2->drawStr(2, line * CHARACTER_HEIGHT, displayLines.at(line).c_str());
@@ -212,8 +319,6 @@ void DisplayContextReal::renderDisplay() {
 		    u8g2->drawFrame(0, barY, SCREEN_WIDTH - 2, PROGRESS_HEIGHT);
 		    u8g2->drawBox(0, barY, barWidth, PROGRESS_HEIGHT);
 	    }
-		const bool hasScrollBar = r_scrollBars.size() > static_cast<size_t>(display) &&
-			r_scrollBars.at(display).enabled;
 		if(r_textFrames.size() > display){
 			std::vector<TextFrame>& textFramesOnThisDisplay = VEC_AT(r_textFrames, display);
 			const int rightPadding = hasScrollBar ? 8 : 2;
@@ -243,23 +348,29 @@ void DisplayContextReal::renderDisplay() {
 				u8g2->drawBox(trackX - 1, trackY + thumbOffset, 3, thumbH);
 			}
 		}
-	    u8g2->sendBuffer();
+		    u8g2->sendBuffer();
+		}
+    marqueeAnimationNeeded.store(r_hasMarqueeAnimation, std::memory_order_release);
 	}
-}
 
 void DisplayContextReal::taskWorkMessage(std::string& taskName, DisplayMessage msg){
 	if(taskName == "renderTask"){
-		r_lines = msg.lines;
-		r_progressDisplay = msg.progressDisplay;
-		r_progress = msg.progress;
-		r_textFrames = msg.textFrames;
-		r_scrollBars = msg.scrollBars;
-        r_waveformOverlayEnabled = msg.waveformOverlayEnabled;
-        r_waveform = msg.waveform;
-        r_waveformSliceStartNormalized = msg.waveformSliceStartNormalized;
-        r_waveformSliceEndNormalized = msg.waveformSliceEndNormalized;
-        r_waveformEditStartBoundary = msg.waveformEditStartBoundary;
+        if(!msg.tickOnly){
+		    r_lines = msg.lines;
+		    r_progressDisplay = msg.progressDisplay;
+		    r_progress = msg.progress;
+		    r_textFrames = msg.textFrames;
+		    r_scrollBars = msg.scrollBars;
+            r_waveformOverlayEnabled = msg.waveformOverlayEnabled;
+            r_waveform = msg.waveform;
+            r_waveformSliceStartNormalized = msg.waveformSliceStartNormalized;
+            r_waveformSliceEndNormalized = msg.waveformSliceEndNormalized;
+            r_waveformEditStartBoundary = msg.waveformEditStartBoundary;
+        }
 		renderDisplay();
+        if(msg.tickOnly){
+            marqueeTickPending.store(false, std::memory_order_release);
+        }
 		return;
 	}
 	throw std::runtime_error("DisplayContextReal::taskWorkMessage invoked with task name " + taskName);

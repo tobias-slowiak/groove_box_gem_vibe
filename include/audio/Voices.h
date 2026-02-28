@@ -60,14 +60,17 @@ private:
 class Voices {
 public:
 	Voices(ResourceManager& resourceManager): resourceManager(resourceManager) {}
-	
-    float process();
-    
-    void clear(){activeVoices.clear();}
-    
-    void triggerVoice(StreamingBufferIterator& iterator,
-		int note, float playbackRate, float gain = 1.0f, bool repeat = false,
-		float attack = 0.0f, float decay = 0.0f, float sustain = 1.0f, float release = 0.1f);
+		
+	    float process();
+	    
+	    void clear(){activeVoices.clear();}
+
+	    // Ensures at least one slot is available before creating a new iterator/voice.
+	    void prepareForNewVoice();
+	    
+	    void triggerVoice(StreamingBufferIterator& iterator,
+			int note, float playbackRate, float gain = 1.0f, bool repeat = false,
+			float attack = 0.0f, float decay = 0.0f, float sustain = 1.0f, float release = 0.1f);
 	
 	//TODO: trigger off all velocities of this note.
 	void triggerOff(int note);
@@ -75,6 +78,7 @@ public:
     const int maxVoices = 32;  // Max number of simultaneous voices
 
 private:
+	bool releaseOldestVoice();
 	ResourceManager& resourceManager;
 	std::vector<Voice> activeVoices;
 };

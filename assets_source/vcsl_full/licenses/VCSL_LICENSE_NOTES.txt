@@ -1,0 +1,4 @@
+Source: Versilian Studios Chamber Orchestra Community Edition
+Page: https://versilian-studios.com/vcsl/
+License: CC0 1.0 (as stated by the source page)
+Note: Keep original attribution/readme files from the archive together with samples.

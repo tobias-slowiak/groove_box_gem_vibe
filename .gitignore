@@ -1,2 +1,20 @@
-Samples/
+Samples/*
+!Samples/data/
+!Samples/data/**
 logs/
+
+# Audio files
+*.[Ww][Aa][Vv]
+*.[Aa][Ii][Ff]
+*.[Aa][Ii][Ff][Ff]
+*.[Ff][Ll][Aa][Cc]
+*.[Mm][Pp]3
+*.[Oo][Gg][Gg]
+*.[Mm]4[Aa]
+*.[Aa][Aa][Cc]
+*.[Oo][Pp][Uu][Ss]
+
+# Local artifacts and large binaries (do not commit)
+assets_source/vcsl_full/archives/
+partition_backups/
+tools/local_bin/

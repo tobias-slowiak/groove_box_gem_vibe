@@ -104,7 +104,7 @@ void ModeManager::renderVoicesTest(BelaContext *context, ResourceManager& resour
 	}
 
 	if(blocksElapsed == 15000){
-		sp.initForFolder("/root/Bela/Samples/Standard_Bass");
+		sp.initForFolder("chordophones_zithers_upright_piano_yamaha");
 	}
 	static int sampleNumber = 0;
 	static int blockOffset = 0;

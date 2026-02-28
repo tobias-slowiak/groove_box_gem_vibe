@@ -5,6 +5,7 @@
 #include <atomic>
 #include <vector>
 #include <stdexcept>
+#include <cstdint>
 //compiel
 #include "IDisplayContext.h"
 class ResourceManager;
@@ -76,8 +77,8 @@ private:
     int progressDisplay = -1; //determines which display shows the progress bar
     float progress = 0.0f;
 
-    std::vector<std::vector<TextFrame>> textFrames;
-    std::vector<ScrollBar> scrollBars;
+	std::vector<std::vector<TextFrame>> textFrames;
+	std::vector<ScrollBar> scrollBars;
     bool waveformOverlayEnabled = false;
     std::vector<float> waveform;
     float waveformSliceStartNormalized = 0.0f;
@@ -88,13 +89,27 @@ private:
     std::vector<std::vector<std::string>> r_lines;
     int r_progressDisplay = -1; 
     float r_progress = 0.0f;
-    std::vector<std::vector<TextFrame>> r_textFrames;
-    std::vector<ScrollBar> r_scrollBars;
-    bool r_waveformOverlayEnabled = false;
-    std::vector<float> r_waveform;
-    float r_waveformSliceStartNormalized = 0.0f;
-    float r_waveformSliceEndNormalized = 1.0f;
-    bool r_waveformEditStartBoundary = true;
+	std::vector<std::vector<TextFrame>> r_textFrames;
+	std::vector<ScrollBar> r_scrollBars;
+	bool r_waveformOverlayEnabled = false;
+	std::vector<float> r_waveform;
+	float r_waveformSliceStartNormalized = 0.0f;
+	float r_waveformSliceEndNormalized = 1.0f;
+	bool r_waveformEditStartBoundary = true;
+
+    static constexpr int MARQUEE_GAP_CHARS = 3;
+    static constexpr uint64_t MARQUEE_STEP_NS = 110000000ULL;
+    struct MarqueeState {
+        std::string key;
+        size_t offset = 0;
+        uint64_t lastStepNs = 0;
+        bool active = false;
+    };
+    std::vector<MarqueeState> r_marqueeStates;
+    bool r_hasMarqueeAnimation = false;
+    std::atomic<bool> marqueeAnimationNeeded{false};
+    std::atomic<bool> marqueeTickPending{false};
+    uint64_t marqueeLastTickEnqueueNs = 0;
 
     
 };

@@ -1,0 +1,2 @@
+# Ignore extracted curl package contents in tools
+local_bin/curl_pkg/

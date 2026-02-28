@@ -29,6 +29,7 @@ enum class UIStateId {
 	General,
 	Instrument,
 	Sampler,
+	SetEditor,
 	COUNT
 };
 
@@ -66,6 +67,13 @@ struct UIStateContext {
 	int effectsTargetIndex = 0;
 	int effectsStageIndex = 0;
 	int effectsNewTypeIndex = 0;
+	int instrumentSetIndex = 0;
+	int setEntryIndex = 0;
+	int setCatalogBrowseIndex = 0;
+	std::string setAliasDraft = "Alias";
+	int setAliasCharIndex = 0;
+	std::string setNameDraft = "Set";
+	int setNameCharIndex = 0;
 };
 
 enum class stateNavigationEvent {
@@ -98,6 +106,8 @@ public:
 	void processBlockwise();
 	void updateDisplay();
 	void renderDisplay();
+	void lockStateNavigation(UIStateId lockedState);
+	void unlockStateNavigation();
 
 	void stateSwitch(int indexShift);
 	void drumKeySwitch();
@@ -115,4 +125,6 @@ private:
 	UIStateContext ctxt;
 	std::vector<UIState> states;
 	UIState& state;
+	bool stateNavigationLocked = false;
+	UIStateId lockedStateId = UIStateId::General;
 };

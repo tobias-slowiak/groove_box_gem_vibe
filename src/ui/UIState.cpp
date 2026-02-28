@@ -1,13 +1,17 @@
  #include "../../include/ui/UI.h"
- #include "../../include/general/ResourceManager.h"
- #include "../../include/audio/Loopers.h"
+#include "../../include/general/ResourceManager.h"
+#include "../../include/audio/Loopers.h"
 #include "../../include/audio/Effects.h"
  #include <string>
  #include <algorithm>
+#include <cctype>
  #include <functional>
  //compile
 
-UIStateContext::UIStateContext(ResourceManager& rm): rm(rm), metronome(rm.getMetronome()), loopers(rm.getLoopers()) {}
+UIStateContext::UIStateContext(ResourceManager& rm): rm(rm), metronome(rm.getMetronome()), loopers(rm.getLoopers()) {
+    instrumentSetIndex = rm.getInstrumentSetLibrary().getActiveSetIndex();
+    setNameDraft = rm.getInstrumentSetLibrary().getSetName(instrumentSetIndex);
+}
 
 std::string getLooperTriggerModeString(LooperTriggerMode mode) {
     switch (mode) {
@@ -233,7 +237,7 @@ void applyCatalogDefaults(UIStateContext& ctxt, bool keys, bool reloadSamples){
 
     auto& catalog = ctxt.rm.getDrumCatalog();
     SamplePack& samplePack = ctxt.rm.getDrumSamplePack();
-    if(reloadSamples){
+    if(reloadSamples || !samplePack.hasLoadedSamples()){
         samplePack.initForFolder(catalog.getFolderName(ctxt.drumIndex));
     }
     InstrumentDefaults& defaults = catalog.getDefaults(ctxt.drumIndex);
@@ -241,6 +245,163 @@ void applyCatalogDefaults(UIStateContext& ctxt, bool keys, bool reloadSamples){
     if(!ctxt.rm.keysInMelodicMode){
         applyEffectDefaultsToInstrumentBus(ctxt, defaults.effects);
     }
+}
+
+int findCatalogIndexByFolderName(InstrumentCatalog& catalog, const std::string& folderName){
+    for(int i = 0; i < catalog.size(); ++i){
+        if(catalog.getFolderName(static_cast<size_t>(i)) == folderName){
+            return i;
+        }
+    }
+    return -1;
+}
+
+int clampSetSelection(UIStateContext& ctxt, int index){
+    return ctxt.rm.getInstrumentSetLibrary().clampSetIndex(index);
+}
+
+std::string trimTokenCopy(const std::string& in){
+    size_t start = 0;
+    while(start < in.size() && std::isspace(static_cast<unsigned char>(in[start]))){
+        ++start;
+    }
+    size_t end = in.size();
+    while(end > start && std::isspace(static_cast<unsigned char>(in[end - 1]))){
+        --end;
+    }
+    return in.substr(start, end - start);
+}
+
+const std::string& editorAlphabet(){
+    static const std::string kAlphabet = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    return kAlphabet;
+}
+
+void ensureCursorAndText(std::string& text, int& cursor){
+    if(text.empty()){
+        text = " ";
+    }
+    if(cursor < 0){
+        cursor = 0;
+    }
+    if(cursor >= static_cast<int>(text.size())){
+        cursor = static_cast<int>(text.size()) - 1;
+    }
+}
+
+void cycleTextChar(std::string& text, int& cursor, int direction){
+    ensureCursorAndText(text, cursor);
+    const std::string& alphabet = editorAlphabet();
+    char c = text[static_cast<size_t>(cursor)];
+    size_t pos = alphabet.find(c);
+    if(pos == std::string::npos){
+        pos = 0;
+    }
+    int next = static_cast<int>(pos) + direction;
+    const int count = static_cast<int>(alphabet.size());
+    next %= count;
+    if(next < 0){
+        next += count;
+    }
+    text[static_cast<size_t>(cursor)] = alphabet[static_cast<size_t>(next)];
+}
+
+void moveTextCursor(std::string& text, int& cursor, int direction){
+    ensureCursorAndText(text, cursor);
+    int next = cursor + direction;
+    if(next < 0){
+        next = 0;
+    }
+    if(next >= static_cast<int>(text.size())){
+        next = static_cast<int>(text.size()) - 1;
+    }
+    cursor = next;
+}
+
+std::string withCursorIndicator(std::string text, int cursor){
+    ensureCursorAndText(text, cursor);
+    if(cursor >= 0 && cursor < static_cast<int>(text.size())){
+        text[static_cast<size_t>(cursor)] = std::toupper(static_cast<unsigned char>(text[static_cast<size_t>(cursor)]));
+    }
+    return text;
+}
+
+void syncSetSelection(UIStateContext& ctxt){
+    InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
+    ctxt.instrumentSetIndex = clampSetSelection(ctxt, ctxt.instrumentSetIndex);
+    library.setActiveSetIndex(ctxt.instrumentSetIndex);
+    ctxt.setEntryIndex = library.clampEntryIndex(ctxt.instrumentSetIndex, ctxt.setEntryIndex);
+}
+
+bool currentSetHasEntries(UIStateContext& ctxt){
+    return ctxt.rm.getInstrumentSetLibrary().getEntryCount(ctxt.instrumentSetIndex) > 0;
+}
+
+std::string getCurrentSetKeyDisplayName(UIStateContext& ctxt){
+    InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
+    syncSetSelection(ctxt);
+    if(!currentSetHasEntries(ctxt)){
+        return ctxt.rm.getInstrumentCatalog().getDisplayName(ctxt.instrumentIndex);
+    }
+    const InstrumentSetEntry& entry = library.getEntry(ctxt.instrumentSetIndex, ctxt.setEntryIndex);
+    if(!entry.displayName.empty()){
+        return entry.displayName;
+    }
+    const int catalogIndex = findCatalogIndexByFolderName(ctxt.rm.getInstrumentCatalog(), entry.instrumentId);
+    if(catalogIndex >= 0){
+        return ctxt.rm.getInstrumentCatalog().getDisplayName(static_cast<size_t>(catalogIndex));
+    }
+    return entry.instrumentId;
+}
+
+void applySelectedKeyInstrument(UIStateContext& ctxt, bool reloadSamples){
+    InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
+    syncSetSelection(ctxt);
+
+    if(currentSetHasEntries(ctxt)){
+        const InstrumentSetEntry& entry = library.getEntry(ctxt.instrumentSetIndex, ctxt.setEntryIndex);
+        const int catalogIndex = findCatalogIndexByFolderName(ctxt.rm.getInstrumentCatalog(), entry.instrumentId);
+        if(catalogIndex >= 0){
+            ctxt.instrumentIndex = catalogIndex;
+        }
+        SamplePack& samplePack = ctxt.rm.getKeyInstrumentSamplePack();
+        if(reloadSamples){
+            samplePack.initForFolder(entry.instrumentId);
+        }
+        if(catalogIndex >= 0){
+            InstrumentDefaults& defaults = ctxt.rm.getInstrumentCatalog().getDefaults(static_cast<size_t>(catalogIndex));
+            samplePack.setVoiceSettings(toVoiceSettings(defaults));
+            if(ctxt.rm.keysInMelodicMode){
+                applyEffectDefaultsToInstrumentBus(ctxt, defaults.effects);
+            }
+        }
+        return;
+    }
+
+    applyCatalogDefaults(ctxt, true, reloadSamples);
+}
+
+void stepSelectedKeyInstrument(UIStateContext& ctxt, int direction){
+    InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
+    syncSetSelection(ctxt);
+    if(currentSetHasEntries(ctxt)){
+        const int count = library.getEntryCount(ctxt.instrumentSetIndex);
+        int next = ctxt.setEntryIndex + direction;
+        next %= count;
+        if(next < 0){
+            next += count;
+        }
+        ctxt.setEntryIndex = next;
+        return;
+    }
+
+    const int count = ctxt.rm.getInstrumentCatalog().size();
+    int next = ctxt.instrumentIndex + direction;
+    next %= count;
+    if(next < 0){
+        next += count;
+    }
+    ctxt.instrumentIndex = next;
 }
 
 SamplePack& getActiveModeSamplePack(UIStateContext& ctxt){
@@ -408,11 +569,263 @@ void adjustSelectedEffectParam(UIStateContext& ctxt, int paramIndex, int directi
 
 
 
- UIState::UIState(UI& uiRef, UIStateId stateId)
+UIState::UIState(UI& uiRef, UIStateId stateId)
      : id(stateId)
 {
     paramLines.clear();
     subParamLines.clear();
+    if(stateId == UIStateId::SetEditor){
+        paramLines.push_back({"SetEdit",
+                            []{return "";},
+                                    {
+                                        []() {},
+                                        []() {},
+                                        []() {}
+                                    }
+                            });
+        subParamLines.push_back({
+                            {"Set",
+                            [&uiRef]() {
+                                syncSetSelection(uiRef.ctxt);
+                                return uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                            },
+                                {
+                                    [&uiRef]() {
+                                        uiRef.ctxt.instrumentSetIndex = clampSetSelection(uiRef.ctxt, uiRef.ctxt.instrumentSetIndex + 1);
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().setActiveSetIndex(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.setEntryIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().clampEntryIndex(uiRef.ctxt.instrumentSetIndex, 0);
+                                        uiRef.ctxt.setNameDraft = uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.setNameCharIndex = 0;
+                                    },
+                                    [&uiRef]() {
+                                        uiRef.ctxt.instrumentSetIndex = clampSetSelection(uiRef.ctxt, uiRef.ctxt.instrumentSetIndex - 1);
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().setActiveSetIndex(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.setEntryIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().clampEntryIndex(uiRef.ctxt.instrumentSetIndex, 0);
+                                        uiRef.ctxt.setNameDraft = uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.setNameCharIndex = 0;
+                                    },
+                                    [&uiRef]() {
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().setActiveSetIndex(uiRef.ctxt.instrumentSetIndex);
+                                        applySelectedKeyInstrument(uiRef.ctxt, true);
+                                    }
+                                }
+                            },
+                            {"InSet",
+                            [&uiRef]() {
+                                syncSetSelection(uiRef.ctxt);
+                                if(!currentSetHasEntries(uiRef.ctxt)){
+                                    return std::string("-");
+                                }
+                                return getCurrentSetKeyDisplayName(uiRef.ctxt);
+                            },
+                                {
+                                    [&uiRef]() {
+                                        if(currentSetHasEntries(uiRef.ctxt)){
+                                            stepSelectedKeyInstrument(uiRef.ctxt, +1);
+                                        }
+                                    },
+                                    [&uiRef]() {
+                                        if(currentSetHasEntries(uiRef.ctxt)){
+                                            stepSelectedKeyInstrument(uiRef.ctxt, -1);
+                                        }
+                                    },
+                                    [&uiRef]() {
+                                        if(currentSetHasEntries(uiRef.ctxt)){
+                                            applySelectedKeyInstrument(uiRef.ctxt, true);
+                                        }
+                                    }
+                                }
+                            },
+                            {"I",
+                            [&uiRef]() {
+                                InstrumentCatalog& catalog = uiRef.ctxt.rm.getInstrumentCatalog();
+                                const int count = catalog.size();
+                                if(count <= 0){
+                                    return std::string("-");
+                                }
+                                int index = uiRef.ctxt.setCatalogBrowseIndex % count;
+                                if(index < 0) index += count;
+                                uiRef.ctxt.setCatalogBrowseIndex = index;
+                                return catalog.getDisplayName(static_cast<size_t>(index));
+                            },
+                                {
+                                    [&uiRef]() {
+                                        InstrumentCatalog& catalog = uiRef.ctxt.rm.getInstrumentCatalog();
+                                        const int count = catalog.size();
+                                        if(count <= 0){
+                                            return;
+                                        }
+                                        int index = (uiRef.ctxt.setCatalogBrowseIndex + 1) % count;
+                                        uiRef.ctxt.setCatalogBrowseIndex = index;
+                                    },
+                                    [&uiRef]() {
+                                        InstrumentCatalog& catalog = uiRef.ctxt.rm.getInstrumentCatalog();
+                                        const int count = catalog.size();
+                                        if(count <= 0){
+                                            return;
+                                        }
+                                        int index = (uiRef.ctxt.setCatalogBrowseIndex - 1 + count) % count;
+                                        uiRef.ctxt.setCatalogBrowseIndex = index;
+                                    },
+                                    [&uiRef]() {
+                                        if(uiRef.ctxt.rm.getInstrumentCatalog().size() <= 0){
+                                            return;
+                                        }
+                                        uiRef.ctxt.instrumentIndex = uiRef.ctxt.setCatalogBrowseIndex;
+                                        applyCatalogDefaults(uiRef.ctxt, true, true);
+                                    }
+                                }
+                            },
+                            {"Alias",
+                            [&uiRef]() { return withCursorIndicator(uiRef.ctxt.setAliasDraft, uiRef.ctxt.setAliasCharIndex); },
+                                {
+                                    [&uiRef]() { cycleTextChar(uiRef.ctxt.setAliasDraft, uiRef.ctxt.setAliasCharIndex, +1); },
+                                    [&uiRef]() { cycleTextChar(uiRef.ctxt.setAliasDraft, uiRef.ctxt.setAliasCharIndex, -1); },
+                                    [&uiRef]() { uiRef.ctxt.setAliasDraft = trimTokenCopy(uiRef.ctxt.setAliasDraft); }
+                                }
+                            },
+                            {"Apos",
+                            [&uiRef]() {
+                                ensureCursorAndText(uiRef.ctxt.setAliasDraft, uiRef.ctxt.setAliasCharIndex);
+                                return std::to_string(uiRef.ctxt.setAliasCharIndex + 1) + "/" + std::to_string(uiRef.ctxt.setAliasDraft.size());
+                            },
+                                {
+                                    [&uiRef]() { moveTextCursor(uiRef.ctxt.setAliasDraft, uiRef.ctxt.setAliasCharIndex, +1); },
+                                    [&uiRef]() { moveTextCursor(uiRef.ctxt.setAliasDraft, uiRef.ctxt.setAliasCharIndex, -1); },
+                                    []() {}
+                                }
+                            },
+                            {"Add",
+                            []() { return std::string("push"); },
+                                {
+                                    []() {},
+                                    []() {},
+                                    [&uiRef]() {
+                                        syncSetSelection(uiRef.ctxt);
+                                        InstrumentCatalog& catalog = uiRef.ctxt.rm.getInstrumentCatalog();
+                                        const int count = catalog.size();
+                                        if(count <= 0){
+                                            return;
+                                        }
+                                        int index = uiRef.ctxt.setCatalogBrowseIndex % count;
+                                        if(index < 0) index += count;
+                                        uiRef.ctxt.setCatalogBrowseIndex = index;
+                                        std::string alias = trimTokenCopy(uiRef.ctxt.setAliasDraft);
+                                        if(alias.empty()){
+                                            alias = catalog.getDisplayName(static_cast<size_t>(index));
+                                            uiRef.ctxt.setAliasDraft = alias;
+                                        }
+                                        const std::string instrumentId = catalog.getFolderName(static_cast<size_t>(index));
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().addOrUpdateEntry(
+                                            uiRef.ctxt.instrumentSetIndex,
+                                            instrumentId,
+                                            alias);
+                                        const int entryCount = uiRef.ctxt.rm.getInstrumentSetLibrary().getEntryCount(uiRef.ctxt.instrumentSetIndex);
+                                        for(int i = 0; i < entryCount; ++i){
+                                            if(uiRef.ctxt.rm.getInstrumentSetLibrary().getEntry(uiRef.ctxt.instrumentSetIndex, i).instrumentId == instrumentId){
+                                                uiRef.ctxt.setEntryIndex = i;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            {"Rem",
+                            []() { return std::string("push"); },
+                                {
+                                    []() {},
+                                    []() {},
+                                    [&uiRef]() {
+                                        syncSetSelection(uiRef.ctxt);
+                                        if(!currentSetHasEntries(uiRef.ctxt)){
+                                            return;
+                                        }
+                                        const InstrumentSetEntry entry = uiRef.ctxt.rm.getInstrumentSetLibrary().getEntry(
+                                            uiRef.ctxt.instrumentSetIndex,
+                                            uiRef.ctxt.setEntryIndex);
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().removeEntryByInstrumentId(
+                                            uiRef.ctxt.instrumentSetIndex,
+                                            entry.instrumentId);
+                                        uiRef.ctxt.setEntryIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().clampEntryIndex(
+                                            uiRef.ctxt.instrumentSetIndex,
+                                            uiRef.ctxt.setEntryIndex);
+                                    }
+                                }
+                            },
+                            {"SName",
+                            [&uiRef]() { return withCursorIndicator(uiRef.ctxt.setNameDraft, uiRef.ctxt.setNameCharIndex); },
+                                {
+                                    [&uiRef]() { cycleTextChar(uiRef.ctxt.setNameDraft, uiRef.ctxt.setNameCharIndex, +1); },
+                                    [&uiRef]() { cycleTextChar(uiRef.ctxt.setNameDraft, uiRef.ctxt.setNameCharIndex, -1); },
+                                    [&uiRef]() {
+                                        std::string trimmed = trimTokenCopy(uiRef.ctxt.setNameDraft);
+                                        if(trimmed.empty()){
+                                            trimmed = "Set";
+                                        }
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().renameSet(uiRef.ctxt.instrumentSetIndex, trimmed);
+                                        uiRef.ctxt.setNameDraft = uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                                    }
+                                }
+                            },
+                            {"SPos",
+                            [&uiRef]() {
+                                ensureCursorAndText(uiRef.ctxt.setNameDraft, uiRef.ctxt.setNameCharIndex);
+                                return std::to_string(uiRef.ctxt.setNameCharIndex + 1) + "/" + std::to_string(uiRef.ctxt.setNameDraft.size());
+                            },
+                                {
+                                    [&uiRef]() { moveTextCursor(uiRef.ctxt.setNameDraft, uiRef.ctxt.setNameCharIndex, +1); },
+                                    [&uiRef]() { moveTextCursor(uiRef.ctxt.setNameDraft, uiRef.ctxt.setNameCharIndex, -1); },
+                                    []() {}
+                                }
+                            },
+                            {"NewSet",
+                            []() { return std::string("push"); },
+                                {
+                                    []() {},
+                                    []() {},
+                                    [&uiRef]() {
+                                        std::string trimmed = trimTokenCopy(uiRef.ctxt.setNameDraft);
+                                        if(trimmed.empty()){
+                                            trimmed = "Set";
+                                        }
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().addSet(trimmed);
+                                        uiRef.ctxt.instrumentSetIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().getActiveSetIndex();
+                                        uiRef.ctxt.setEntryIndex = 0;
+                                        uiRef.ctxt.setNameDraft = uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.setNameCharIndex = 0;
+                                    }
+                                }
+                            },
+                            {"DelSet",
+                            []() { return std::string("push"); },
+                                {
+                                    []() {},
+                                    []() {},
+                                    [&uiRef]() {
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().removeSet(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.instrumentSetIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().getActiveSetIndex();
+                                        uiRef.ctxt.setEntryIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().clampEntryIndex(uiRef.ctxt.instrumentSetIndex, 0);
+                                        uiRef.ctxt.setNameDraft = uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                                        uiRef.ctxt.setNameCharIndex = 0;
+                                    }
+                                }
+                            },
+                            {"Use",
+                            [&uiRef]() {
+                                const int active = uiRef.ctxt.rm.getInstrumentSetLibrary().getActiveSetIndex();
+                                return (active == uiRef.ctxt.instrumentSetIndex) ? std::string("Active") : std::string("push");
+                            },
+                                {
+                                    []() {},
+                                    []() {},
+                                    [&uiRef]() {
+                                        uiRef.ctxt.rm.getInstrumentSetLibrary().setActiveSetIndex(uiRef.ctxt.instrumentSetIndex);
+                                        applySelectedKeyInstrument(uiRef.ctxt, true);
+                                    }
+                                }
+                            }});
+        return;
+    }
     ///////--------------METRONOME PARAMS ------------------------------
     paramLines.push_back({"Metronome",  //Label
                         []{return "";}, //Value
@@ -467,21 +880,43 @@ void adjustSelectedEffectParam(UIStateContext& ctxt, int paramIndex, int directi
                                 }
                         });
     subParamLines.push_back({ //Vector of subParamLines
-                        {"Keys",
-                        [&uiRef]() { return uiRef.ctxt.rm.getInstrumentCatalog().getDisplayName(uiRef.ctxt.instrumentIndex); },
+                        {"Set",
+                        [&uiRef]() {
+                            syncSetSelection(uiRef.ctxt);
+                            return uiRef.ctxt.rm.getInstrumentSetLibrary().getSetName(uiRef.ctxt.instrumentSetIndex);
+                        },
                             {
                                 [&uiRef]() {
-                                    uiRef.ctxt.instrumentIndex = (uiRef.ctxt.instrumentIndex + 1) % uiRef.ctxt.rm.getInstrumentCatalog().size();
+                                    uiRef.ctxt.instrumentSetIndex = clampSetSelection(uiRef.ctxt, uiRef.ctxt.instrumentSetIndex + 1);
+                                    uiRef.ctxt.setEntryIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().clampEntryIndex(uiRef.ctxt.instrumentSetIndex, 0);
+                                    syncSetSelection(uiRef.ctxt);
                                 },
                                 [&uiRef]() {
-                                    uiRef.ctxt.instrumentIndex = (uiRef.ctxt.instrumentIndex - 1 + uiRef.ctxt.rm.getInstrumentCatalog().size()) % uiRef.ctxt.rm.getInstrumentCatalog().size();
+                                    uiRef.ctxt.instrumentSetIndex = clampSetSelection(uiRef.ctxt, uiRef.ctxt.instrumentSetIndex - 1);
+                                    uiRef.ctxt.setEntryIndex = uiRef.ctxt.rm.getInstrumentSetLibrary().clampEntryIndex(uiRef.ctxt.instrumentSetIndex, 0);
+                                    syncSetSelection(uiRef.ctxt);
                                 },
                                 [&uiRef]() {
-                                    applyCatalogDefaults(uiRef.ctxt, true, true);
+                                    syncSetSelection(uiRef.ctxt);
+                                    applySelectedKeyInstrument(uiRef.ctxt, true);
                                 }
                             }
                         },
-                        {"Drums",
+                        {"K",
+                        [&uiRef]() { return getCurrentSetKeyDisplayName(uiRef.ctxt); },
+                            {
+                                [&uiRef]() {
+                                    stepSelectedKeyInstrument(uiRef.ctxt, +1);
+                                },
+                                [&uiRef]() {
+                                    stepSelectedKeyInstrument(uiRef.ctxt, -1);
+                                },
+                                [&uiRef]() {
+                                    applySelectedKeyInstrument(uiRef.ctxt, true);
+                                }
+                            }
+                        },
+                        {"D",
                         [&uiRef]() { return uiRef.ctxt.rm.getDrumCatalog().getDisplayName(uiRef.ctxt.drumIndex); },
                             {
                                 [&uiRef]() {
@@ -501,7 +936,7 @@ void adjustSelectedEffectParam(UIStateContext& ctxt, int paramIndex, int directi
                                 [&uiRef]() {
                                     uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode;
                                     if(uiRef.ctxt.rm.keysInMelodicMode){
-                                        applyCatalogDefaults(uiRef.ctxt, true, false);
+                                        applySelectedKeyInstrument(uiRef.ctxt, false);
                                     } else {
                                         applyCatalogDefaults(uiRef.ctxt, false, false);
                                     }
@@ -509,7 +944,7 @@ void adjustSelectedEffectParam(UIStateContext& ctxt, int paramIndex, int directi
                                 [&uiRef]() {
                                     uiRef.ctxt.rm.keysInMelodicMode = !uiRef.ctxt.rm.keysInMelodicMode;
                                     if(uiRef.ctxt.rm.keysInMelodicMode){
-                                        applyCatalogDefaults(uiRef.ctxt, true, false);
+                                        applySelectedKeyInstrument(uiRef.ctxt, false);
                                     } else {
                                         applyCatalogDefaults(uiRef.ctxt, false, false);
                                     }
