@@ -132,12 +132,29 @@ def normalize_region(ops: Dict[str, str], sfz_dir: Path, vcsl_root: Path) -> Dic
     sample_raw = ops.get("sample", "").strip()
     if sample_raw == "":
         return {}
-    sample_path = (sfz_dir / sample_raw).resolve()
+    sample_norm = sample_raw.replace("\\", "/")
+    sample_candidates = [
+        (sfz_dir / sample_norm).resolve(),
+        (vcsl_root / sample_norm).resolve(),
+        (vcsl_root / ("Samples/" + sample_norm)).resolve(),
+    ]
+    sample_norm_lower = sample_norm.lower()
+    samples_idx = sample_norm_lower.find("samples/")
+    if samples_idx >= 0:
+        sample_candidates.append((vcsl_root / sample_norm[samples_idx:]).resolve())
+    if sample_norm.startswith("Programs/"):
+        sample_candidates.append((vcsl_root / ("Samples/" + sample_norm[len("Programs/"):])).resolve())
+
+    sample_path = sample_candidates[0]
+    for candidate in sample_candidates:
+        if candidate.exists():
+            sample_path = candidate
+            break
     try:
         sample_rel = sample_path.relative_to(vcsl_root.resolve()).as_posix()
     except ValueError:
         # Fallback when sample= path is already relative to vcsl root.
-        sample_rel = sample_raw.replace("\\", "/").lstrip("./")
+        sample_rel = sample_norm.lstrip("./")
 
     def get_int(key: str, default: int, minv: int | None = None, maxv: int | None = None) -> int:
         raw = ops.get(key, str(default))

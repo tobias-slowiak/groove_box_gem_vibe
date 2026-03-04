@@ -14,6 +14,18 @@
 #include "../../include/hardwareInterfaces/Potentiometer.h"
 #include "../../include/general/DebugLog.h"
 
+namespace {
+RotaryEncoderEvent invertRotaryDirection(RotaryEncoderEvent event){
+	if(event == RotaryEncoderEvent::Right){
+		return RotaryEncoderEvent::Left;
+	}
+	if(event == RotaryEncoderEvent::Left){
+		return RotaryEncoderEvent::Right;
+	}
+	return event;
+}
+}
+
 InterfaceMessage::InterfaceMessage(): type(InterfaceMessageType::none), id(-1), value(-1.0), event(RotaryEncoderEvent::None) {}
 
 void InterfaceMessage::prettyPrint(){
@@ -93,6 +105,7 @@ void BelaInterface::processBlockwise(){
 	for(auto& rotaryEncoder: rotaryEncoders){
 		rotaryEncoder.processBlockwise();
 		RotaryEncoderEvent event = rotaryEncoder.getEvent();
+		event = invertRotaryDirection(event);
 		if(event != RotaryEncoderEvent::None){
 			DEBUG_RT_PRINTF("RotEnc %d event %d\n", rotaryEncoder.getIndex(), static_cast<int>(event));
 			messages.push(InterfaceMessage(InterfaceMessageType::RotEncSignal, rotaryEncoder.getIndex(), 1.0, event));

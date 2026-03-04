@@ -58,6 +58,21 @@ int findColumnIndex(const std::vector<std::string>& header, const std::string& c
     }
     return -1;
 }
+
+bool fileExists(const std::string& path){
+    return ::access(path.c_str(), F_OK) == 0;
+}
+
+std::string parentDirectory(const std::string& path){
+    const size_t pos = path.find_last_of('/');
+    if(pos == std::string::npos){
+        return ".";
+    }
+    if(pos == 0){
+        return "/";
+    }
+    return path.substr(0, pos);
+}
 }
 
 SamplePack::SamplePack(ResourceManager& resourceManager,
@@ -257,6 +272,8 @@ void SamplePack::loadZonesFromFile(const std::string& zoneTablePath){
     if(!zoneFile){
         throw std::runtime_error("SamplePack: cannot open zones file " + zoneTablePath);
     }
+    const std::string zoneTableDir = parentDirectory(zoneTablePath);
+    const std::string zonePackRoot = parentDirectory(zoneTableDir);
 
     std::string line;
     if(!std::getline(zoneFile, line)){
@@ -307,7 +324,21 @@ void SamplePack::loadZonesFromFile(const std::string& zoneTablePath){
             sampleIdentifier = makeSampleIdentifier(sampleIdentifierByRelPath.size());
             sampleIdentifierByRelPath[sampleRelPath] = sampleIdentifier;
 
-            const std::string absolutePath = vcslRootPath + "/" + sampleRelPath;
+            std::string absolutePath;
+            if(!sampleRelPath.empty() && sampleRelPath.front() == '/'){
+                absolutePath = sampleRelPath;
+            } else {
+                const std::string zoneRelativePath = zoneTableDir + "/" + sampleRelPath;
+                const std::string packRelativePath = zonePackRoot + "/" + sampleRelPath;
+                const std::string vcslRelativePath = vcslRootPath + "/" + sampleRelPath;
+                if(fileExists(zoneRelativePath)){
+                    absolutePath = zoneRelativePath;
+                } else if(fileExists(packRelativePath)){
+                    absolutePath = packRelativePath;
+                } else {
+                    absolutePath = vcslRelativePath;
+                }
+            }
             const int numFrames = AudioFileUtilities::getNumFrames(absolutePath);
             if(numFrames <= 0){
                 rt_printf("SamplePack: unable to read frames for %s, skipping referenced zones\n", absolutePath.c_str());

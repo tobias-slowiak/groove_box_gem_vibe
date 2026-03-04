@@ -337,10 +337,74 @@ bool currentSetHasEntries(UIStateContext& ctxt){
     return ctxt.rm.getInstrumentSetLibrary().getEntryCount(ctxt.instrumentSetIndex) > 0;
 }
 
+std::string toLowerAscii(std::string value){
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c){
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool looksLikeDrumInstrument(const InstrumentSetEntry& entry){
+    static const char* kNeedles[] = {
+        "drum", "kit", "kick", "snare", "hihat", "hi-hat", "tom", "cymbal",
+        "ride", "crash", "perc", "percussion", "clap", "rim", "tambourine", "shaker"
+    };
+
+    const std::string displayLower = toLowerAscii(entry.displayName);
+    const std::string instrumentLower = toLowerAscii(entry.instrumentId);
+    for(const char* needle : kNeedles){
+        if(displayLower.find(needle) != std::string::npos){
+            return true;
+        }
+        if(instrumentLower.find(needle) != std::string::npos){
+            return true;
+        }
+    }
+    return false;
+}
+
+bool findNextMelodicSetEntry(UIStateContext& ctxt, int startIndex, int direction, int& outIndex){
+    InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
+    const int count = library.getEntryCount(ctxt.instrumentSetIndex);
+    if(count <= 0){
+        return false;
+    }
+
+    int step = (direction < 0) ? -1 : 1;
+    int index = startIndex % count;
+    if(index < 0){
+        index += count;
+    }
+
+    for(int scanned = 0; scanned < count; ++scanned){
+        const InstrumentSetEntry& entry = library.getEntry(ctxt.instrumentSetIndex, index);
+        if(!looksLikeDrumInstrument(entry)){
+            outIndex = index;
+            return true;
+        }
+        index += step;
+        if(index >= count){
+            index = 0;
+        } else if(index < 0){
+            index = count - 1;
+        }
+    }
+    return false;
+}
+
+bool alignKeySelectionToMelodicEntry(UIStateContext& ctxt){
+    int melodicIndex = 0;
+    if(!findNextMelodicSetEntry(ctxt, ctxt.setEntryIndex, +1, melodicIndex)){
+        return false;
+    }
+    ctxt.setEntryIndex = melodicIndex;
+    return true;
+}
+
 std::string getCurrentSetKeyDisplayName(UIStateContext& ctxt){
     InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
     syncSetSelection(ctxt);
-    if(!currentSetHasEntries(ctxt)){
+    if(!currentSetHasEntries(ctxt) || !alignKeySelectionToMelodicEntry(ctxt)){
         return ctxt.rm.getInstrumentCatalog().getDisplayName(ctxt.instrumentIndex);
     }
     const InstrumentSetEntry& entry = library.getEntry(ctxt.instrumentSetIndex, ctxt.setEntryIndex);
@@ -358,7 +422,7 @@ void applySelectedKeyInstrument(UIStateContext& ctxt, bool reloadSamples){
     InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
     syncSetSelection(ctxt);
 
-    if(currentSetHasEntries(ctxt)){
+    if(currentSetHasEntries(ctxt) && alignKeySelectionToMelodicEntry(ctxt)){
         const InstrumentSetEntry& entry = library.getEntry(ctxt.instrumentSetIndex, ctxt.setEntryIndex);
         const int catalogIndex = findCatalogIndexByFolderName(ctxt.rm.getInstrumentCatalog(), entry.instrumentId);
         if(catalogIndex >= 0){
@@ -382,21 +446,19 @@ void applySelectedKeyInstrument(UIStateContext& ctxt, bool reloadSamples){
 }
 
 void stepSelectedKeyInstrument(UIStateContext& ctxt, int direction){
-    InstrumentSetLibrary& library = ctxt.rm.getInstrumentSetLibrary();
     syncSetSelection(ctxt);
     if(currentSetHasEntries(ctxt)){
-        const int count = library.getEntryCount(ctxt.instrumentSetIndex);
-        int next = ctxt.setEntryIndex + direction;
-        next %= count;
-        if(next < 0){
-            next += count;
+        const int step = (direction < 0) ? -1 : 1;
+        int melodicIndex = 0;
+        if(findNextMelodicSetEntry(ctxt, ctxt.setEntryIndex + step, step, melodicIndex)){
+            ctxt.setEntryIndex = melodicIndex;
+            return;
         }
-        ctxt.setEntryIndex = next;
-        return;
     }
 
     const int count = ctxt.rm.getInstrumentCatalog().size();
-    int next = ctxt.instrumentIndex + direction;
+    const int step = (direction < 0) ? -1 : 1;
+    int next = ctxt.instrumentIndex + step;
     next %= count;
     if(next < 0){
         next += count;
@@ -847,7 +909,7 @@ UIState::UIState(UI& uiRef, UIStateId stateId)
                             }
                         },
                         {"BPM",
-                        [&uiRef]() { return std::to_string(uiRef.ctxt.metronome.getBPM()); },
+                        [&uiRef]() { return std::to_string(static_cast<int>(uiRef.ctxt.metronome.getBPM())); },
                             {
                                 [&uiRef]() { uiRef.ctxt.metronome.setBPM(uiRef.ctxt.metronome.getBPM() + 1); },
                                 [&uiRef]() { uiRef.ctxt.metronome.setBPM(uiRef.ctxt.metronome.getBPM() - 1); },

@@ -6,3 +6,34 @@ entry	aerophones_edge_blown_aerophones_pipe_organ_loud	Organ
 entry	aerophones_free_aerophones_harmonica_hohner_special20_f_normal	Harmonica
 entry	chordophones_composite_chordophones_folk_harp	Harp
 entry	aerophones_reed_aerophones_saxello_non_vibrato	Saxophone
+
+# Acoustic pop starter (external open-license sources)
+# Enable after creating these .zones.tsv files:
+# set	Acoustic Pop Starter
+# entry	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_piano_salamander.zones.tsv	Piano_Salamander
+# entry	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_gtr_steel.zones.tsv	Guitar_Steel
+# entry	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_gtr_nylon.zones.tsv	Guitar_Nylon
+# entry	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_bass_upright_a.zones.tsv	Bass_Upright_A
+# entry	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_bass_upright_b.zones.tsv	Bass_Upright_B
+
+set	Acoustic Pop Starter
+entry	Samples/instruments/acoustic_pop_sources/salamander/SalamanderGrandPianoV3_44.1khz16bit/tables/aps_piano_salamander.zones.tsv	Piano_Salamander
+entry	Samples/instruments/acoustic_pop_sources/steel_guitar/FSS-SteelStringGuitar-SFZ-20200521/tables/aps_gtr_steel.zones.tsv	Guitar_Steel
+entry	Samples/instruments/acoustic_pop_sources/nylon_guitar/SpanishClassicalGuitar-SFZ-20190618/tables/aps_gtr_nylon.zones.tsv	Guitar_Nylon
+entry	Samples/instruments/acoustic_pop_sources/karoryfer_meatbass/tables/aps_bass_upright_a.zones.tsv	Bass_Upright_A
+entry	Samples/instruments/acoustic_pop_sources/karoryfer_sneakybass/tables/aps_bass_upright_b.zones.tsv	Bass_Upright_B
+
+set	Modern Open Expansion
+entry	Samples/instruments/modern_pop_sources/karoryfer_emilyguitar/tables/emily_clean.zones.tsv	Electric_Guitar
+entry	Samples/instruments/modern_pop_sources/karoryfer_fashionbass/tables/fashionbass.zones.tsv	Electric_Bass
+entry	Samples/instruments/modern_pop_sources/vsco_trumpet/tables/vsco_trumpet_sus.zones.tsv	Trumpet
+entry	Samples/instruments/modern_pop_sources/vsco_violin/tables/vsco_violin_arco_vib.zones.tsv	Violin
+entry	Samples/instruments/modern_pop_sources/ukulele_cc0/tables/ukulele_cc0_basic.zones.tsv	Ukulele
+entry	Samples/instruments/modern_pop_sources/freepats_rock_organ/RockOrganEmulation-SFZ-20190715/tables/rockorganemulation_20190715.zones.tsv	Rock_Organ
+entry	Samples/instruments/modern_pop_sources/freepats_tenor_sax/TenorSaxophone-SFZ-20200717/tables/tenorsaxophone_20200717.zones.tsv	Saxophone
+entry	Samples/instruments/modern_pop_sources/vsco_flute/tables/vsco_flute_expvib.zones.tsv	Flute
+entry	Samples/instruments/modern_pop_sources/vsco_trombone/tables/vsco_trombone_sustain.zones.tsv	Trombone
+
+# Optional extras (FLAC-backed; enable only if target runtime supports FLAC decoding)
+# set	Acoustic Pop Extras
+# entry	Samples/instruments/acoustic_pop_sources/virtuosity_drums/tables/aps_virt_snare_center.zones.tsv	Virt_Snare_Center

@@ -111,6 +111,21 @@ bool ensureDirRecursive(const std::string& path){
     return true;
 }
 
+bool fileExists(const std::string& path){
+    return ::access(path.c_str(), F_OK) == 0;
+}
+
+std::string parentDirectory(const std::string& path){
+    const size_t pos = path.find_last_of('/');
+    if(pos == std::string::npos){
+        return ".";
+    }
+    if(pos == 0){
+        return "/";
+    }
+    return path.substr(0, pos);
+}
+
 std::string sanitizeIdToken(const std::string& in){
     std::string out;
     out.reserve(in.size());
@@ -346,6 +361,7 @@ bool appendRemappedZonesFromSource(const std::string& sourceZonePath,
                                    int targetMidiNote,
                                    int& nextZoneId,
                                    std::vector<std::string>& outputRows,
+                                   const std::string& vcslRootPath,
                                    const std::string& sampleFilter = ""){
     std::ifstream zoneFile(sourceZonePath);
     if(!zoneFile){
@@ -371,6 +387,8 @@ bool appendRemappedZonesFromSource(const std::string& sourceZonePath,
     const int offsetIndex = findColumnIndex(header, "offset");
     const int ampVeltrackIndex = findColumnIndex(header, "amp_veltrack");
     const std::string filterNeedle = toLowerCopy(trimCopy(sampleFilter));
+    const std::string zoneTableDir = parentDirectory(sourceZonePath);
+    const std::string zonePackRoot = parentDirectory(zoneTableDir);
 
     bool addedAny = false;
     while(std::getline(zoneFile, line)){
@@ -384,6 +402,20 @@ bool appendRemappedZonesFromSource(const std::string& sourceZonePath,
         }
         if(!filterNeedle.empty() && toLowerCopy(sampleRelPath).find(filterNeedle) == std::string::npos){
             continue;
+        }
+
+        std::string samplePath = sampleRelPath;
+        if(!sampleRelPath.empty() && sampleRelPath.front() != '/'){
+            const std::string fromZoneDir = zoneTableDir + "/" + sampleRelPath;
+            const std::string fromPackRoot = zonePackRoot + "/" + sampleRelPath;
+            const std::string fromVcslRoot = vcslRootPath + "/" + sampleRelPath;
+            if(fileExists(fromZoneDir)){
+                samplePath = fromZoneDir;
+            } else if(fileExists(fromPackRoot)){
+                samplePath = fromPackRoot;
+            } else if(fileExists(fromVcslRoot)){
+                samplePath = fromVcslRoot;
+            }
         }
         std::string lovel = getCell(row, lovelIndex);
         std::string hivel = getCell(row, hivelIndex);
@@ -403,7 +435,7 @@ bool appendRemappedZonesFromSource(const std::string& sourceZonePath,
 
         std::ostringstream outRow;
         outRow << nextZoneId++ << '\t'
-               << sampleRelPath << '\t'
+               << samplePath << '\t'
                << targetMidiNote << '\t'
                << targetMidiNote << '\t'
                << lovel << '\t'
@@ -420,9 +452,35 @@ bool appendRemappedZonesFromSource(const std::string& sourceZonePath,
     return addedAny;
 }
 
+bool looksLikeZonesPath(const std::string& value){
+    return value.find(".zones.tsv") != std::string::npos;
+}
+
+std::string resolveDrumSourceZonePath(const std::string& instrumentId,
+                                      const std::unordered_map<std::string, std::string>& zoneLookup,
+                                      const std::string& tableRoot){
+    auto zoneIt = zoneLookup.find(instrumentId);
+    if(zoneIt != zoneLookup.end()){
+        return tableRoot + "/" + zoneIt->second;
+    }
+    if(!looksLikeZonesPath(instrumentId)){
+        return "";
+    }
+
+    // Allow direct absolute/relative zones paths for non-VCSL packs.
+    if(!instrumentId.empty() && instrumentId.front() == '/'){
+        return instrumentId;
+    }
+    if(::access(instrumentId.c_str(), F_OK) == 0){
+        return instrumentId;
+    }
+    return tableRoot + "/" + instrumentId;
+}
+
 bool compileDrumSetToZonesFile(const DrumSetDefinition& setDef,
                                const std::unordered_map<std::string, std::string>& zoneLookup,
                                const std::string& tableRoot,
+                               const std::string& vcslRootPath,
                                const std::string& generatedDir,
                                std::string& outZonesPath){
     if(setDef.pieces.empty()){
@@ -445,18 +503,18 @@ bool compileDrumSetToZonesFile(const DrumSetDefinition& setDef,
                 piece.role.c_str(), setDef.displayName.c_str());
             continue;
         }
-        auto zoneIt = zoneLookup.find(piece.instrumentId);
-        if(zoneIt == zoneLookup.end()){
-            std::printf("DrumCatalog: instrument_id '%s' not found for set '%s'\n",
+        const std::string sourceZonePath = resolveDrumSourceZonePath(piece.instrumentId, zoneLookup, tableRoot);
+        if(sourceZonePath.empty()){
+            std::printf("DrumCatalog: instrument_id or zones path '%s' not found for set '%s'\n",
                 piece.instrumentId.c_str(), setDef.displayName.c_str());
             continue;
         }
-        const std::string sourceZonePath = tableRoot + "/" + zoneIt->second;
         const bool added = appendRemappedZonesFromSource(
             sourceZonePath,
             midiNote,
             nextZoneId,
             outputRows,
+            vcslRootPath,
             piece.sampleFilter
         );
         if(!added && !piece.sampleFilter.empty()){
@@ -620,6 +678,7 @@ void DrumCatalog::loadFromVCSLTables(){
     }
 
     const std::string dataRoot = resolveExistingPath("/root/Bela/Samples/data", "Samples/data");
+    const std::string vcslRootPath = resolveExistingPath("/root/Bela/Samples/VCSL-1.2.2-RC", "Samples/VCSL-1.2.2-RC");
     const std::string setDefinitionsPath = dataRoot + "/drum_sets.txt";
     const std::string generatedDir = dataRoot + "/drumsets/generated";
     const std::vector<DrumSetDefinition> drumSets = loadDrumSetDefinitions(setDefinitionsPath);
@@ -629,7 +688,7 @@ void DrumCatalog::loadFromVCSLTables(){
         generatedSetEntries.reserve(drumSets.size());
         for(const auto& setDef : drumSets){
             std::string generatedZonesPath;
-            if(compileDrumSetToZonesFile(setDef, zoneLookup, tableRoot, generatedDir, generatedZonesPath)){
+            if(compileDrumSetToZonesFile(setDef, zoneLookup, tableRoot, vcslRootPath, generatedDir, generatedZonesPath)){
                 generatedSetEntries.push_back({setDef.displayName, generatedZonesPath, makeDefaultInstrumentDefaults()});
             }
         }

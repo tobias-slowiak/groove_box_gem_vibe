@@ -1,0 +1,131 @@
+\documentclass[a4paper]{article}
+\usepackage[margin=10mm]{geometry}
+\usepackage{tikz}
+\usepackage{lmodern}
+\pagestyle{empty}
+
+% Sticker geometry in mm. Change these if you want a different key fit.
+\def\SW{18}   % sticker width
+\def\SH{12}   % sticker height
+\def\GAP{2}   % gap between stickers
+
+\newcommand{\symKick}{\fill (0,0) circle (2.2);}
+\newcommand{\symSnare}{%
+  \draw[line width=0.45] (0,0) circle (2.3);
+  \draw[line width=0.45] (-1.5,0)--(1.5,0);
+}
+\newcommand{\symHatClosed}{%
+  \draw[line width=0.45] (0,0) circle (2.3);
+  \draw[line width=0.45] (-1.5,-1.5)--(1.5,1.5);
+  \draw[line width=0.45] (-1.5,1.5)--(1.5,-1.5);
+}
+\newcommand{\symHatOpen}{%
+  \draw[line width=0.45] (0,0) circle (2.3);
+  \draw[line width=0.45] (-1.7,0)--(1.7,0);
+  \draw[line width=0.45] (0,-1.7)--(0,1.7);
+}
+\newcommand{\symClap}{%
+  \draw[line width=0.45] (-1.6,-1.4)--(-1.6,1.4);
+  \draw[line width=0.45] (0,-1.8)--(0,1.8);
+  \draw[line width=0.45] (1.6,-1.4)--(1.6,1.4);
+}
+\newcommand{\symRim}{\draw[line width=0.45] (-1.8,-1.8) rectangle (1.8,1.8);}
+\newcommand{\symTomLow}{\draw[line width=0.45] (-2,1.4)--(2,1.4)--(0,-2)--cycle;}
+\newcommand{\symTomMid}{\draw[line width=0.45] (0,2.1)--(2.1,0)--(0,-2.1)--(-2.1,0)--cycle;}
+\newcommand{\symTomHigh}{\draw[line width=0.45] (-2,-1.4)--(2,-1.4)--(0,2)--cycle;}
+\newcommand{\symCrash}{%
+  \draw[line width=0.45] (-2.2,0)--(2.2,0);
+  \draw[line width=0.45] (0,-2.2)--(0,2.2);
+  \draw[line width=0.45] (-1.6,-1.6)--(1.6,1.6);
+  \draw[line width=0.45] (-1.6,1.6)--(1.6,-1.6);
+}
+\newcommand{\symRide}{%
+  \draw[line width=0.45] (0,0) circle (2.3);
+  \fill (0,0) circle (0.6);
+}
+\newcommand{\symCowbell}{%
+  \draw[line width=0.45] (-2,1.7)--(2,1.7)--(1.5,-1.8)--(-1.5,-1.8)--cycle;
+  \fill (0,-0.2) circle (0.35);
+}
+\newcommand{\symShaker}{%
+  \draw[line width=0.45] (-1.1,0) circle (1.2);
+  \draw[line width=0.45] (1.2,0) circle (1.2);
+}
+\newcommand{\symPerc}{%
+  \draw[line width=0.45] (2,0)--(1,1.7)--(-1,1.7)--(-2,0)--(-1,-1.7)--(1,-1.7)--cycle;
+}
+\newcommand{\symFxOne}{%
+  \draw[line width=0.55] (-1.2,2.1)--(0.3,0.6)--(-0.3,0.6)--(1.2,-2.1)--(-0.2,-0.6)--(0.4,-0.6);
+}
+\newcommand{\symFxTwo}{%
+  \draw[line width=0.45] (0,2.1)--(0,-2.1);
+  \draw[line width=0.45] (-2.1,0)--(2.1,0);
+  \draw[line width=0.45] (-1.5,-1.5)--(1.5,1.5);
+}
+
+\newcommand{\selectDrum}[1]{%
+  \ifcase#1\relax
+    \def\drumLabel{KICK}\def\drumSymbol{\symKick}%
+  \or
+    \def\drumLabel{SNARE}\def\drumSymbol{\symSnare}%
+  \or
+    \def\drumLabel{CH}\def\drumSymbol{\symHatClosed}%
+  \or
+    \def\drumLabel{OH}\def\drumSymbol{\symHatOpen}%
+  \or
+    \def\drumLabel{CLAP}\def\drumSymbol{\symClap}%
+  \or
+    \def\drumLabel{RIM}\def\drumSymbol{\symRim}%
+  \or
+    \def\drumLabel{LTOM}\def\drumSymbol{\symTomLow}%
+  \or
+    \def\drumLabel{MTOM}\def\drumSymbol{\symTomMid}%
+  \or
+    \def\drumLabel{HTOM}\def\drumSymbol{\symTomHigh}%
+  \or
+    \def\drumLabel{CRSH}\def\drumSymbol{\symCrash}%
+  \or
+    \def\drumLabel{RIDE}\def\drumSymbol{\symRide}%
+  \or
+    \def\drumLabel{COW}\def\drumSymbol{\symCowbell}%
+  \or
+    \def\drumLabel{SHAK}\def\drumSymbol{\symShaker}%
+  \or
+    \def\drumLabel{PERC}\def\drumSymbol{\symPerc}%
+  \or
+    \def\drumLabel{FX1}\def\drumSymbol{\symFxOne}%
+  \else
+    \def\drumLabel{FX2}\def\drumSymbol{\symFxTwo}%
+  \fi
+}
+
+\newcommand{\drawStickerCell}{%
+  \draw[rounded corners=0.8mm, line width=0.2] (0,0) rectangle (\SW,\SH);
+  \begin{scope}[shift={(\SW/2,7.3)}]
+    \drumSymbol
+  \end{scope}
+  \node[font=\sffamily\bfseries\fontsize{5.5}{5.5}\selectfont] at (\SW/2,2.2) {\drumLabel};
+}
+
+\begin{document}
+\centering
+{\sffamily\small Drum Key Sticker Sheet (\SW mm x \SH mm per sticker)}
+
+\vspace{3mm}
+
+\begin{tikzpicture}[x=1mm,y=1mm]
+  % 9 columns x 18 rows on A4 with 10mm margin.
+  \foreach \r in {0,...,17}{
+    \foreach \c in {0,...,8}{
+      \pgfmathtruncatemacro{\idx}{mod(\r*9 + \c,16)}
+      \pgfmathsetmacro{\xpos}{\c*(\SW+\GAP)}
+      \pgfmathsetmacro{\ypos}{-\r*(\SH+\GAP)}
+      \selectDrum{\idx}
+      \begin{scope}[shift={(\xpos,\ypos)}]
+        \drawStickerCell
+      \end{scope}
+    }
+  }
+\end{tikzpicture}
+
+\end{document}
