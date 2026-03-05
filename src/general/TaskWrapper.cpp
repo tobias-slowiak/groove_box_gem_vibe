@@ -78,29 +78,39 @@ bool TaskWrapper<ParentType, MsgType>::tryClaimInFlight(){
 
 template<typename ParentType, typename MsgType>
 void TaskWrapper<ParentType, MsgType>::taskCheckAndWorkMessages(){
-    if(needsScheduling){
-        if(tryClaimInFlight()){
-            int scheduleResponse = Bela_scheduleAuxiliaryTask(auxiliaryTask);
-            if(scheduleResponse != 0){
-                taskInFlight.store(false, std::memory_order_release);
-                if(scheduleResponse == 0) DEBUG_RT_PRINTF("successfully schedulded name=%s\n", name.c_str());
-                if(scheduleResponse != EBUSY){
-                    if(scheduleResponse == EINVAL){
-                        DEBUG_RT_PRINTF("TaskWrapper::processBlockwise(): Bela_scheduleAuxiliaryTask returned EINVAL so prbl sth with the init failed name=%s \n",
-                            this->name.c_str());
-                    } else {
-                        std::string& localName = this->getName();
-                        DEBUG_RT_PRINTF("TaskWrapper::processBlockwise(): Bela_scheduleAuxiliaryTask error=%d name=%s \n",
-                        scheduleResponse, localName.c_str());
-                    }
-                }
+    if(!needsScheduling){
+        return;
+    }
 
-            }
-            needsScheduling = false;
-        }
-        //if tryClaim fails the needsschedule probably is already worked. still the needsschedule stays true and the
-        //task is scheduled another time after it is finished just in case but on that schedule it will probably do nothing
-    } 
+    if(!tryClaimInFlight()){
+        return;
+    }
+
+    int scheduleResponse = Bela_scheduleAuxiliaryTask(auxiliaryTask);
+    if(scheduleResponse == 0){
+        needsScheduling = false;
+        return;
+    }
+
+    // Scheduling failed: release in-flight and keep needsScheduling=true for retry.
+    taskInFlight.store(false, std::memory_order_release);
+    if(scheduleResponse == EBUSY){
+        DEBUG_RT_PRINTF("TaskWrapper::taskCheckAndWorkMessages(): EBUSY name=%s (will retry)\n", name.c_str());
+        return;
+    }
+    if(scheduleResponse == EAGAIN){
+        DEBUG_RT_PRINTF("TaskWrapper::taskCheckAndWorkMessages(): EAGAIN name=%s (will retry)\n", name.c_str());
+        return;
+    }
+    // Non-transient errors: do not spin forever.
+    needsScheduling = false;
+    if(scheduleResponse == EINVAL){
+        DEBUG_RT_PRINTF("TaskWrapper::taskCheckAndWorkMessages(): EINVAL name=%s (giving up)\n",
+            this->name.c_str());
+        return;
+    }
+    DEBUG_RT_PRINTF("TaskWrapper::taskCheckAndWorkMessages(): error=%d name=%s (giving up)\n",
+        scheduleResponse, this->name.c_str());
 }
 
 

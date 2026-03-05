@@ -160,8 +160,9 @@ void ModeManager::renderTopMenu(BelaContext* context, ResourceManager& resourceM
 		}
 		if(msg.type == InterfaceMessageType::RotEncSignal){
 			RotaryEncoderEvent event = msg.event;
-			if(event == RotaryEncoderEvent::Left) modeShift(-1,&selectionMode);
+			// UI-level direction mapping mirrors InputHandler rotary semantics.
 			if(event == RotaryEncoderEvent::Right) modeShift(1,&selectionMode);
+			if(event == RotaryEncoderEvent::Left) modeShift(-1,&selectionMode);
 			if(event == RotaryEncoderEvent::Push){
 				mode = selectionMode;
 				printf("set mode to %d\n", static_cast<int>(mode));
@@ -269,6 +270,7 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 		preparedSine = true;
 	}
 	if(!startedSine && blocksElapsed >= static_cast<size_t>(resourceManager.blocksPerSecond * sineRecordStartSeconds)){ // wait for initialization
+		recordingIndex = 0;
 		recordingSine = true;
 		startedSine = true;
 		std::string filePath = resourceManager.SAMPLES_PATH + "SineOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
@@ -375,6 +377,7 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 	if(blocksElapsed > static_cast<size_t>(resourceManager.blocksPerSecond * allDoneSeconds)){
 		currentTestDone = true;
 		blocksElapsed = 0;
+		recordingIndex = 0;
 		recordingSine = false;
 		recordingSaw = false;
 		recordingSquare = false;

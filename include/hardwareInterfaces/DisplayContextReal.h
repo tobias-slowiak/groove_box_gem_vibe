@@ -55,6 +55,9 @@ public:
     void taskWorkMessage(std::string& taskName, DisplayMessage msg);
 	
 private:
+    void maybeRunWatchdog(uint64_t nowNs);
+    void maybeQueueDeferredDisplayUpdate();
+    void recoverDisplayI2C();
 
     ResourceManager& resourceManager;
 
@@ -110,6 +113,16 @@ private:
     std::atomic<bool> marqueeAnimationNeeded{false};
     std::atomic<bool> marqueeTickPending{false};
     uint64_t marqueeLastTickEnqueueNs = 0;
+    std::atomic<bool> displayUpdatePending{false};
+    std::atomic<bool> deferredDisplayUpdate{false};
+    std::atomic<bool> watchdogRecoveryPending{false};
+    std::atomic<uint64_t> taskHeartbeatCounter{0};
+    std::atomic<uint64_t> taskHeartbeatNs{0};
+    uint64_t watchdogLastSeenHeartbeat = 0;
+    uint64_t watchdogLastSeenHeartbeatNs = 0;
+    uint64_t watchdogLastRecoveryNs = 0;
+    static constexpr uint64_t WATCHDOG_STALL_NS = 1500000000ULL;
+    static constexpr uint64_t WATCHDOG_RECOVERY_COOLDOWN_NS = 1000000000ULL;
 
     
 };

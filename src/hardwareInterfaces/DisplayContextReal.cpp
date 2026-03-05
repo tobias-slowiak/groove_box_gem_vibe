@@ -68,6 +68,9 @@ DisplayContextReal::DisplayContextReal(ResourceManager& resourceManager, std::ve
 	if(numLines < 3 || numLines > 5){
 		throw std::runtime_error("DisplayContextReal: invalid display parameters");
 	}
+    const uint64_t nowNs = steadyNowNs();
+    taskHeartbeatNs.store(nowNs, std::memory_order_release);
+    watchdogLastSeenHeartbeatNs = nowNs;
 }
 
 void DisplayContextReal::initDisplayContext() {
@@ -84,11 +87,13 @@ void DisplayContextReal::initDisplayContext() {
 
 void DisplayContextReal::processBlockwise() {
 	renderTask.taskCheckAndWorkMessages();
+    maybeQueueDeferredDisplayUpdate();
+    const uint64_t nowNs = steadyNowNs();
+    maybeRunWatchdog(nowNs);
     if(!marqueeAnimationNeeded.load(std::memory_order_acquire)){
         return;
     }
 
-    const uint64_t nowNs = steadyNowNs();
     if(nowNs - marqueeLastTickEnqueueNs < MARQUEE_STEP_NS){
         return;
     }
@@ -107,6 +112,87 @@ void DisplayContextReal::processBlockwise() {
     } catch(const std::runtime_error&){
         // Never crash due to marquee animation pressure; skip this frame and retry later.
         marqueeTickPending.store(false, std::memory_order_release);
+    }
+}
+
+void DisplayContextReal::maybeQueueDeferredDisplayUpdate(){
+    if(!deferredDisplayUpdate.load(std::memory_order_acquire)){
+        return;
+    }
+    if(displayUpdatePending.load(std::memory_order_acquire)){
+        return;
+    }
+    if(!deferredDisplayUpdate.exchange(false, std::memory_order_acq_rel)){
+        return;
+    }
+    sendTaskMessage();
+    renderTask.taskCheckAndWorkMessages();
+}
+
+void DisplayContextReal::maybeRunWatchdog(uint64_t nowNs){
+    const uint64_t heartbeat = taskHeartbeatCounter.load(std::memory_order_acquire);
+    if(heartbeat != watchdogLastSeenHeartbeat){
+        watchdogLastSeenHeartbeat = heartbeat;
+        watchdogLastSeenHeartbeatNs = taskHeartbeatNs.load(std::memory_order_acquire);
+        return;
+    }
+
+    const bool waitingForTask =
+        displayUpdatePending.load(std::memory_order_acquire) ||
+        marqueeTickPending.load(std::memory_order_acquire) ||
+        watchdogRecoveryPending.load(std::memory_order_acquire);
+    if(!waitingForTask){
+        return;
+    }
+
+    if(nowNs - watchdogLastSeenHeartbeatNs < WATCHDOG_STALL_NS){
+        return;
+    }
+
+    // First attempt: re-kick the scheduler if the task is not currently in flight.
+    if(!renderTask.isInFlight()){
+        renderTask.setScheduleFlag();
+        renderTask.taskCheckAndWorkMessages();
+    }
+
+    // If the task is still in flight, avoid forcing anything unsafe.
+    if(renderTask.isInFlight()){
+        return;
+    }
+
+    if(watchdogRecoveryPending.load(std::memory_order_acquire)){
+        return;
+    }
+    if(nowNs - watchdogLastRecoveryNs < WATCHDOG_RECOVERY_COOLDOWN_NS){
+        return;
+    }
+
+    DisplayMessage recoverMsg;
+    recoverMsg.tickOnly = true;
+    recoverMsg.recoverDisplay = true;
+    try{
+        renderTask.pushMessage(TaskMessageTarget::TaskThread, recoverMsg);
+        watchdogRecoveryPending.store(true, std::memory_order_release);
+        watchdogLastRecoveryNs = nowNs;
+        renderTask.taskCheckAndWorkMessages();
+        rt_printf("Display watchdog: queued display recovery\n");
+    } catch(const std::runtime_error&){
+        // Queue pressure: keep running and retry on next watchdog interval.
+    }
+}
+
+void DisplayContextReal::recoverDisplayI2C(){
+    for(auto* u8g2: u8g2s){
+        if(!u8g2){
+            continue;
+        }
+        u8g2->initDisplay();
+        u8g2->setPowerSave(0);
+        u8g2->setFont(FONT);
+        u8g2->setFontRefHeightText();
+        u8g2->setFontPosTop();
+        u8g2->clearBuffer();
+        u8g2->sendBuffer();
     }
 }
 
@@ -142,6 +228,12 @@ void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines,
 }
 
 void DisplayContextReal::sendTaskMessage(){
+    bool expectedPending = false;
+    if(!displayUpdatePending.compare_exchange_strong(expectedPending, true, std::memory_order_acq_rel)){
+        deferredDisplayUpdate.store(true, std::memory_order_release);
+        return;
+    }
+
 	DisplayMessage msg;
 	msg.lines = lines;
 	msg.progressDisplay = progressDisplay;
@@ -150,11 +242,17 @@ void DisplayContextReal::sendTaskMessage(){
 	msg.scrollBars = scrollBars;
     msg.tickOnly = false;
     msg.waveformOverlayEnabled = waveformOverlayEnabled;
-    msg.waveform = waveform;
-    msg.waveformSliceStartNormalized = waveformSliceStartNormalized;
-    msg.waveformSliceEndNormalized = waveformSliceEndNormalized;
-    msg.waveformEditStartBoundary = waveformEditStartBoundary;
-	renderTask.pushMessage(TaskMessageTarget::TaskThread, msg);
+	msg.waveform = waveform;
+	msg.waveformSliceStartNormalized = waveformSliceStartNormalized;
+	msg.waveformSliceEndNormalized = waveformSliceEndNormalized;
+	msg.waveformEditStartBoundary = waveformEditStartBoundary;
+    try{
+	    renderTask.pushMessage(TaskMessageTarget::TaskThread, msg);
+    } catch(const std::runtime_error&){
+        displayUpdatePending.store(false, std::memory_order_release);
+        deferredDisplayUpdate.store(true, std::memory_order_release);
+        throw;
+    }
 }
 
 std::string DisplayContextReal::getLine(int displayNumber, int lineNumber) {
@@ -355,6 +453,9 @@ void DisplayContextReal::renderDisplay() {
 
 void DisplayContextReal::taskWorkMessage(std::string& taskName, DisplayMessage msg){
 	if(taskName == "renderTask"){
+        if(msg.recoverDisplay){
+            recoverDisplayI2C();
+        }
         if(!msg.tickOnly){
 		    r_lines = msg.lines;
 		    r_progressDisplay = msg.progressDisplay;
@@ -368,8 +469,16 @@ void DisplayContextReal::taskWorkMessage(std::string& taskName, DisplayMessage m
             r_waveformEditStartBoundary = msg.waveformEditStartBoundary;
         }
 		renderDisplay();
+        taskHeartbeatNs.store(steadyNowNs(), std::memory_order_release);
+        taskHeartbeatCounter.fetch_add(1, std::memory_order_acq_rel);
+        if(!msg.tickOnly){
+            displayUpdatePending.store(false, std::memory_order_release);
+        }
         if(msg.tickOnly){
             marqueeTickPending.store(false, std::memory_order_release);
+        }
+        if(msg.recoverDisplay){
+            watchdogRecoveryPending.store(false, std::memory_order_release);
         }
 		return;
 	}

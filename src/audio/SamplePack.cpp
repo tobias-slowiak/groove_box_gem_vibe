@@ -63,6 +63,73 @@ bool fileExists(const std::string& path){
     return ::access(path.c_str(), F_OK) == 0;
 }
 
+bool startsWith(const std::string& value, const std::string& prefix){
+    return value.size() >= prefix.size() &&
+        value.compare(0, prefix.size(), prefix) == 0;
+}
+
+void appendUniquePath(std::vector<std::string>& paths, const std::string& candidate){
+    if(candidate.empty()){
+        return;
+    }
+    if(std::find(paths.begin(), paths.end(), candidate) != paths.end()){
+        return;
+    }
+    paths.push_back(candidate);
+}
+
+void appendPathLayoutVariants(std::vector<std::string>& candidates, const std::string& path){
+    appendUniquePath(candidates, path);
+
+    // Relative entries usually start with `Samples/...`.
+    if(startsWith(path, "Samples/")){
+        const std::string rest = path.substr(std::string("Samples/").size());
+        appendUniquePath(candidates, "/root/Bela/Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/projects/instrumentFromPC/Samples/" + rest);
+    }
+
+    // Some deployments place curated packs in `/root/Bela/Samples/<group>/...`
+    // while set entries point to `Samples/instruments/<group>/...`.
+    if(startsWith(path, "Samples/instruments/")){
+        const std::string rest = path.substr(std::string("Samples/instruments/").size());
+        appendUniquePath(candidates, "Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/projects/instrumentFromPC/Samples/" + rest);
+    }
+
+    // Absolute Bela paths should also resolve when running locally.
+    if(startsWith(path, "/root/Bela/Samples/")){
+        const std::string rest = path.substr(std::string("/root/Bela/Samples/").size());
+        appendUniquePath(candidates, "Samples/" + rest);
+        appendUniquePath(candidates, "Samples/instruments/" + rest);
+        appendUniquePath(candidates, "/root/Bela/projects/instrumentFromPC/Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/projects/instrumentFromPC/Samples/instruments/" + rest);
+    }
+
+    if(startsWith(path, "/root/Bela/Samples/instruments/")){
+        const std::string rest = path.substr(std::string("/root/Bela/Samples/instruments/").size());
+        appendUniquePath(candidates, "/root/Bela/Samples/" + rest);
+        appendUniquePath(candidates, "Samples/" + rest);
+        appendUniquePath(candidates, "Samples/instruments/" + rest);
+        appendUniquePath(candidates, "/root/Bela/projects/instrumentFromPC/Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/projects/instrumentFromPC/Samples/instruments/" + rest);
+    }
+
+    if(startsWith(path, "/root/Bela/projects/instrumentFromPC/Samples/")){
+        const std::string rest = path.substr(std::string("/root/Bela/projects/instrumentFromPC/Samples/").size());
+        appendUniquePath(candidates, "Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/Samples/" + rest);
+    }
+
+    if(startsWith(path, "/root/Bela/projects/instrumentFromPC/Samples/instruments/")){
+        const std::string rest = path.substr(std::string("/root/Bela/projects/instrumentFromPC/Samples/instruments/").size());
+        appendUniquePath(candidates, "Samples/" + rest);
+        appendUniquePath(candidates, "Samples/instruments/" + rest);
+        appendUniquePath(candidates, "/root/Bela/Samples/" + rest);
+        appendUniquePath(candidates, "/root/Bela/Samples/instruments/" + rest);
+    }
+}
+
 std::string parentDirectory(const std::string& path){
     const size_t pos = path.find_last_of('/');
     if(pos == std::string::npos){
@@ -226,6 +293,20 @@ void SamplePack::clearZoneState(){
 
 std::string SamplePack::resolveZoneTablePath(const std::string& instrumentId) const{
     if(instrumentId.size() >= 10 && instrumentId.find(".zones.tsv") != std::string::npos){
+        // Direct zones path provided by instrument set entry.
+        // Resolve robustly across local/Bela cwd differences.
+        std::vector<std::string> candidates;
+        appendPathLayoutVariants(candidates, instrumentId);
+        if(!instrumentId.empty() && instrumentId.front() != '/'){
+            appendPathLayoutVariants(candidates, tableRootPath + "/" + instrumentId);
+            appendPathLayoutVariants(candidates, "/root/Bela/" + instrumentId);
+            appendPathLayoutVariants(candidates, "/root/Bela/projects/instrumentFromPC/" + instrumentId);
+        }
+        for(const auto& candidate : candidates){
+            if(fileExists(candidate)){
+                return candidate;
+            }
+        }
         return instrumentId;
     }
 

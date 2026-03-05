@@ -6,6 +6,10 @@
 #include "include/general/ModeManager.h"
 
 
+/*
+TODO: For the next interface hardware version: make place for resistors
+in series in the i2c lines to smoothen the ramps to reduce talk to audio*/
+
 //TODO: make stack allocation instead of heap pointers wherever possible.
 //   where it is not possible (for example the real/fake dual classes) do in place initiation of unique ptrs.
 /*

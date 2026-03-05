@@ -32,8 +32,8 @@ void UI::menuUp(int displayId){
 		if(state.paramLineInEditMode){
 			state.paramLines[state.currentParamLineIndex].manipulator.increase();
 		}else{
-			state.currentParamLineIndex--;
-			if(state.currentParamLineIndex < 0) state.currentParamLineIndex = state.paramLines.size() - 1;
+			state.currentParamLineIndex++;
+			if(state.currentParamLineIndex >= (int)state.paramLines.size()) state.currentParamLineIndex = 0;
 			if(state.currentParamLineIndex < state.subParamLines.size()) state.currentSubParamSetIndex = state.currentParamLineIndex;
 			state.subParamLineInEditMode = false;
 			state.currentSubParamLineIndex = 0;
@@ -42,8 +42,8 @@ void UI::menuUp(int displayId){
 		if(state.subParamLineInEditMode){
 			state.subParamLines[state.currentSubParamSetIndex][state.currentSubParamLineIndex].manipulator.increase();
 		}else{
-			state.currentSubParamLineIndex--;
-			if(state.currentSubParamLineIndex < 0) state.currentSubParamLineIndex = state.subParamLines[state.currentSubParamSetIndex].size() - 1;
+			state.currentSubParamLineIndex++;
+			if(state.currentSubParamLineIndex >= (int)state.subParamLines[state.currentSubParamSetIndex].size()) state.currentSubParamLineIndex = 0;
 		}
 	}
 	updateDisplay();
@@ -59,8 +59,8 @@ void UI::menuDown(int displayId){
 		if(state.paramLineInEditMode){
 			state.paramLines[state.currentParamLineIndex].manipulator.decrease();
 		}else{
-			state.currentParamLineIndex++;
-			if(state.currentParamLineIndex >= (int)state.paramLines.size()) state.currentParamLineIndex = 0;
+			state.currentParamLineIndex--;
+			if(state.currentParamLineIndex < 0) state.currentParamLineIndex = state.paramLines.size() - 1;
 			if(state.currentParamLineIndex < state.subParamLines.size()) state.currentSubParamSetIndex = state.currentParamLineIndex;
 			state.subParamLineInEditMode = false;
 			state.currentSubParamLineIndex = 0;
@@ -69,8 +69,8 @@ void UI::menuDown(int displayId){
 		if(state.subParamLineInEditMode){
 			state.subParamLines[state.currentSubParamSetIndex][state.currentSubParamLineIndex].manipulator.decrease();
 		}else{
-			state.currentSubParamLineIndex++;
-			if(state.currentSubParamLineIndex >= (int)state.subParamLines[state.currentSubParamSetIndex].size()) state.currentSubParamLineIndex = 0;
+			state.currentSubParamLineIndex--;
+			if(state.currentSubParamLineIndex < 0) state.currentSubParamLineIndex = state.subParamLines[state.currentSubParamSetIndex].size() - 1;
 		}
 	}
 	updateDisplay();

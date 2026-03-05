@@ -72,6 +72,7 @@ void InputHandler::handleMessage(InterfaceMessage& message){
 			}
 			break;
 		case InterfaceMessageType::RotEncSignal:
+			// UI-level direction mapping: keep hardware rotary decoding unmodified.
 			if(event == RotaryEncoderEvent::Right)
                 ui.menuUp(message.id);
             if(event == RotaryEncoderEvent::Left)

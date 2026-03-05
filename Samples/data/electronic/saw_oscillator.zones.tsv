@@ -1,0 +1,2 @@
+zone_id	sample_relpath	lokey	hikey	lovel	hivel	pitch_keycenter	tune_cents	volume_db	trigger	offset	amp_veltrack
+saw_main	/root/Bela/Samples/SawOscillator/35_64.wav	0	127	0	127	35	0	0	attack	0	100
