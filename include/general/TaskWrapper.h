@@ -85,7 +85,7 @@ private:
     std::atomic<bool> taskInFlight{false};
     int priority;
     std::string name;
-    bool needsScheduling = false;
+    std::atomic<bool> needsScheduling{false};
 
     static void taskWorkMessages(void* arg);
 

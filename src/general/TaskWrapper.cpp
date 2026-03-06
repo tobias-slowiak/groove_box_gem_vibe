@@ -62,7 +62,9 @@ TaskWrapper<ParentType, MsgType>::TaskWrapper(ParentType* object, int priority, 
 
 template<typename ParentType, typename MsgType>
 void TaskWrapper<ParentType, MsgType>::setScheduleFlag(){
-    if(!isInFlight()) needsScheduling = true;
+    if(!isInFlight()){
+        needsScheduling.store(true, std::memory_order_release);
+    }
 }
 
 template<typename ParentType, typename MsgType>
@@ -78,7 +80,7 @@ bool TaskWrapper<ParentType, MsgType>::tryClaimInFlight(){
 
 template<typename ParentType, typename MsgType>
 void TaskWrapper<ParentType, MsgType>::taskCheckAndWorkMessages(){
-    if(!needsScheduling){
+    if(!needsScheduling.load(std::memory_order_acquire)){
         return;
     }
 
@@ -88,7 +90,7 @@ void TaskWrapper<ParentType, MsgType>::taskCheckAndWorkMessages(){
 
     int scheduleResponse = Bela_scheduleAuxiliaryTask(auxiliaryTask);
     if(scheduleResponse == 0){
-        needsScheduling = false;
+        needsScheduling.store(false, std::memory_order_release);
         return;
     }
 
@@ -103,7 +105,7 @@ void TaskWrapper<ParentType, MsgType>::taskCheckAndWorkMessages(){
         return;
     }
     // Non-transient errors: do not spin forever.
-    needsScheduling = false;
+    needsScheduling.store(false, std::memory_order_release);
     if(scheduleResponse == EINVAL){
         DEBUG_RT_PRINTF("TaskWrapper::taskCheckAndWorkMessages(): EINVAL name=%s (giving up)\n",
             this->name.c_str());
@@ -132,7 +134,9 @@ bool TaskWrapper<ParentType, MsgType>::pushMessage(TaskMessageTarget target, Msg
     }
     if(target == TaskMessageTarget::TaskThread){
         bool ok = audioToTask.push(msg);
-        if(!needsScheduling) this->setScheduleFlag();
+        if(!needsScheduling.load(std::memory_order_acquire)){
+            this->setScheduleFlag();
+        }
         return ok;
     }
     throw std::runtime_error("TaskWrapper::pushMessage called with invalid target");
