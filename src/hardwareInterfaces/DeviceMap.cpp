@@ -43,11 +43,6 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		buttonSamplerRecord = 6;
 		numberOfPotentiometers = 8;
 		reversePottis = true;
-		outputGainPotentiometerIndex = 0;
-		metronomeGainPotentiometerIndex = 1;
-		inputGainPotentiometerIndex = 2;
-		instrumentGainPotentiometerNumber = 3;
-		
 		
 	#endif
 
@@ -76,11 +71,6 @@ DeviceMap::DeviceMap(ResourceManager& resourceManager){
 		buttonSamplerRecord = 6;
 		numberOfPotentiometers = 8;
 		reversePottis = true;
-		outputGainPotentiometerIndex = 0;
-		metronomeGainPotentiometerIndex = 1;
-		inputGainPotentiometerIndex = 2;
-		instrumentGainPotentiometerNumber = 3;
-		
 		
 	#endif
 	

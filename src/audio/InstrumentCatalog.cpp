@@ -550,7 +550,7 @@ DrumCatalog::DrumCatalog(){
 
 void InstrumentCatalog::loadFromVCSLTables(){
     catalog.clear();
-    const std::string tableRoot = resolveExistingPath("/root/Bela/Samples/bela_tables/vcsl_full", "Samples/bela_tables/vcsl_full");
+    const std::string tableRoot = resolveExistingPath("/root/Bela/Samples/data", "Samples/data");
     const std::string indexPath = tableRoot + "/instruments.tsv";
     std::ifstream indexFile(indexPath);
     if(!indexFile){
@@ -611,7 +611,7 @@ void InstrumentCatalog::loadFromVCSLTables(){
 
 void DrumCatalog::loadFromVCSLTables(){
     catalog.clear();
-    const std::string tableRoot = resolveExistingPath("/root/Bela/Samples/bela_tables/vcsl_full", "Samples/bela_tables/vcsl_full");
+    const std::string tableRoot = resolveExistingPath("/root/Bela/Samples/data", "Samples/data");
     const std::string indexPath = tableRoot + "/instruments.tsv";
     std::ifstream indexFile(indexPath);
     if(!indexFile){
@@ -678,7 +678,7 @@ void DrumCatalog::loadFromVCSLTables(){
     }
 
     const std::string dataRoot = resolveExistingPath("/root/Bela/Samples/data", "Samples/data");
-    const std::string vcslRootPath = resolveExistingPath("/root/Bela/Samples/VCSL-1.2.2-RC", "Samples/VCSL-1.2.2-RC");
+    const std::string vcslRootPath = resolveExistingPath("/root/Bela/Samples/instruments/VCSL-1.2.2-RC", "Samples/instruments/VCSL-1.2.2-RC");
     const std::string setDefinitionsPath = dataRoot + "/drum_sets.txt";
     const std::string generatedDir = dataRoot + "/drumsets/generated";
     const std::vector<DrumSetDefinition> drumSets = loadDrumSetDefinitions(setDefinitionsPath);

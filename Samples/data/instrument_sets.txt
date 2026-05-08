@@ -1,29 +1,29 @@
 active_set	0
 set	Classical (VCSL)
-entry	chordophones_zithers_grand_piano_steinway_b	Piano
-entry	aerophones_edge_blown_aerophones_baroque_alto_recorder_staccato	Alto
-entry	aerophones_edge_blown_aerophones_pipe_organ_loud	Organ
-entry	aerophones_free_aerophones_harmonica_hohner_special20_f_normal	Harmonica
-entry	chordophones_composite_chordophones_folk_harp	Harp
-entry	aerophones_reed_aerophones_saxello_non_vibrato	Saxophone
+entry	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Chordophones/Zithers/Grand Piano, Steinway B/tables/chordophones_zithers_grand_piano_steinway_b.zones.tsv	Piano
+entry	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/tables/aerophones_edge_blown_aerophones_baroque_alto_recorder_staccato.zones.tsv	Alto
+entry	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Aerophones/Edge-blown Aerophones/Pipe Organ/tables/aerophones_edge_blown_aerophones_pipe_organ_loud.zones.tsv	Organ
+entry	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Aerophones/Free Aerophones/Harmonica-Hohner-Special20-F/tables/aerophones_free_aerophones_harmonica_hohner_special20_f_normal.zones.tsv	Harmonica
+entry	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Chordophones/Composite Chordophones/Folk Harp/tables/chordophones_composite_chordophones_folk_harp.zones.tsv	Harp
+entry	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Aerophones/Reed Aerophones/Saxello/tables/aerophones_reed_aerophones_saxello_non_vibrato.zones.tsv	Saxophone
 
 set	Open Sources
-entry	Samples/instruments/acoustic_pop_sources/salamander/SalamanderGrandPianoV3_44.1khz16bit/tables/aps_piano_salamander.zones.tsv	Piano_Salamander
-entry	Samples/instruments/acoustic_pop_sources/steel_guitar/FSS-SteelStringGuitar-SFZ-20200521/tables/aps_gtr_steel.zones.tsv	Guitar_Steel
-entry	Samples/instruments/acoustic_pop_sources/nylon_guitar/SpanishClassicalGuitar-SFZ-20190618/tables/aps_gtr_nylon.zones.tsv	Guitar_Nylon
-entry	Samples/instruments/acoustic_pop_sources/karoryfer_meatbass/tables/aps_bass_upright_a.zones.tsv	Bass_Upright_A
-entry	Samples/instruments/acoustic_pop_sources/karoryfer_sneakybass/tables/aps_bass_upright_b.zones.tsv	Bass_Upright_B
-entry	Samples/instruments/modern_pop_sources/karoryfer_emilyguitar/tables/emily_clean.zones.tsv	Electric_Guitar
-entry	Samples/instruments/modern_pop_sources/karoryfer_fashionbass/tables/fashionbass.zones.tsv	Electric_Bass
-entry	Samples/instruments/modern_pop_sources/vsco_trumpet/tables/vsco_trumpet_sus.zones.tsv	Trumpet
-entry	Samples/instruments/modern_pop_sources/vsco_violin/tables/vsco_violin_arco_vib.zones.tsv	Violin
-entry	Samples/instruments/modern_pop_sources/ukulele_cc0/tables/ukulele_cc0_basic.zones.tsv	Ukulele
-entry	Samples/instruments/modern_pop_sources/freepats_rock_organ/RockOrganEmulation-SFZ-20190715/tables/rockorganemulation_20190715.zones.tsv	Rock_Organ
-entry	Samples/instruments/modern_pop_sources/freepats_tenor_sax/TenorSaxophone-SFZ-20200717/tables/tenorsaxophone_20200717.zones.tsv	Saxophone
-entry	Samples/instruments/modern_pop_sources/vsco_flute/tables/vsco_flute_expvib.zones.tsv	Flute
-entry	Samples/instruments/modern_pop_sources/vsco_trombone/tables/vsco_trombone_sustain.zones.tsv	Trombone
+entry	/root/Bela/Samples/instruments/acoustic_pop_sources/salamander/SalamanderGrandPianoV3_44.1khz16bit/tables/aps_piano_salamander.zones.tsv	Piano_Salamander
+entry	/root/Bela/Samples/instruments/acoustic_pop_sources/steel_guitar/FSS-SteelStringGuitar-SFZ-20200521/tables/aps_gtr_steel.zones.tsv	Guitar_Steel
+entry	/root/Bela/Samples/instruments/acoustic_pop_sources/nylon_guitar/SpanishClassicalGuitar-SFZ-20190618/tables/aps_gtr_nylon.zones.tsv	Guitar_Nylon
+entry	/root/Bela/Samples/instruments/acoustic_pop_sources/karoryfer_meatbass/tables/aps_bass_upright_a.zones.tsv	Bass_Upright_A
+entry	/root/Bela/Samples/instruments/acoustic_pop_sources/karoryfer_sneakybass/tables/aps_bass_upright_b.zones.tsv	Bass_Upright_B
+entry	/root/Bela/Samples/instruments/modern_pop_sources/karoryfer_emilyguitar/tables/emily_clean.zones.tsv	Electric_Guitar
+entry	/root/Bela/Samples/instruments/modern_pop_sources/karoryfer_fashionbass/tables/fashionbass.zones.tsv	Electric_Bass
+entry	/root/Bela/Samples/instruments/modern_pop_sources/vsco_trumpet/tables/vsco_trumpet_sus.zones.tsv	Trumpet
+entry	/root/Bela/Samples/instruments/modern_pop_sources/vsco_violin/tables/vsco_violin_arco_vib.zones.tsv	Violin
+entry	/root/Bela/Samples/instruments/modern_pop_sources/ukulele_cc0/tables/ukulele_cc0_basic.zones.tsv	Ukulele
+entry	/root/Bela/Samples/instruments/modern_pop_sources/freepats_rock_organ/RockOrganEmulation-SFZ-20190715/tables/rockorganemulation_20190715.zones.tsv	Rock_Organ
+entry	/root/Bela/Samples/instruments/modern_pop_sources/freepats_tenor_sax/TenorSaxophone-SFZ-20200717/tables/tenorsaxophone_20200717.zones.tsv	Saxophone
+entry	/root/Bela/Samples/instruments/modern_pop_sources/vsco_flute/tables/vsco_flute_expvib.zones.tsv	Flute
+entry	/root/Bela/Samples/instruments/modern_pop_sources/vsco_trombone/tables/vsco_trombone_sustain.zones.tsv	Trombone
 
 set	Electronic
-entry	Samples/data/electronic/sine_oscillator.zones.tsv	Sine Wave
-entry	Samples/data/electronic/saw_oscillator.zones.tsv	Saw Wave
-entry	Samples/data/electronic/square_oscillator.zones.tsv	Square Wave
+entry	/root/Bela/Samples/instruments/Oscillators/SineOscillator/tables/sine_oscillator.zones.tsv	Sine Wave
+entry	/root/Bela/Samples/instruments/Oscillators/SawOscillator/tables/saw_oscillator.zones.tsv	Saw Wave
+entry	/root/Bela/Samples/instruments/Oscillators/SquareOscillator/tables/square_oscillator.zones.tsv	Square Wave

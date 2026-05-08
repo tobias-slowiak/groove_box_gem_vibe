@@ -273,7 +273,7 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 		recordingIndex = 0;
 		recordingSine = true;
 		startedSine = true;
-		std::string filePath = resourceManager.SAMPLES_PATH + "SineOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
+		std::string filePath = resourceManager.SAMPLES_PATH + "instruments/Oscillators/SineOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
 		rm.getRecorder().setNewFilename(filePath);
 		rt_printf("Writing sample to %s\n", filePath.c_str());
 		rm.getRecorder().startRecording();
@@ -309,7 +309,7 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 		recordingIndex = 0;
 		recordingSaw = true;
 		startedSaw = true;
-		std::string filePath = resourceManager.SAMPLES_PATH + "SawOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
+		std::string filePath = resourceManager.SAMPLES_PATH + "instruments/Oscillators/SawOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
 		rm.getRecorder().setNewFilename(filePath);
 		rt_printf("Writing sample to %s\n", filePath.c_str());
 		rm.getRecorder().startRecording();
@@ -351,7 +351,7 @@ void ModeManager::renderCreateOsciSamples(BelaContext *context, ResourceManager&
 		recordingIndex = 0;
 		recordingSquare = true;
 		startedSquare = true;
-		std::string filePath = resourceManager.SAMPLES_PATH + "SquareOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
+		std::string filePath = resourceManager.SAMPLES_PATH + "instruments/Oscillators/SquareOscillator/" + std::to_string(midiNote) + "_" + std::to_string(midiVelocity) + ".wav";
 		rm.getRecorder().setNewFilename(filePath);
 		rt_printf("Writing sample to %s\n", filePath.c_str());
 		rm.getRecorder().startRecording();

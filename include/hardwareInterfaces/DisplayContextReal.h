@@ -115,6 +115,8 @@ private:
     uint64_t marqueeLastTickEnqueueNs = 0;
     std::atomic<bool> displayUpdatePending{false};
     std::atomic<bool> deferredDisplayUpdate{false};
+    uint64_t lastDisplayPushEnqueueNs = 0;
+    static constexpr uint64_t DISPLAY_PUSH_MIN_INTERVAL_NS = 100000000ULL; // 10 Hz cap
     std::atomic<bool> watchdogRecoveryPending{false};
     std::atomic<uint64_t> taskHeartbeatCounter{0};
     std::atomic<uint64_t> taskHeartbeatNs{0};

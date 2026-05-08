@@ -15,7 +15,7 @@ public:
 	Voice(StreamingBufferIterator& iterator, int note, float playbackRate,
 		ResourceManager& resourceManager,
 		float gain = 1.0f,
-		float attack = 0.01f, float decay = 0.0f, float sustain = 1.0f, float release = 0.0f,
+		float attack = 0.01f, float decay = 0.0f, float sustain = 1.0f, float release = 0.01f,
 	    bool repeat = false);
 
 	Voice(Voice&& other) noexcept;

@@ -10,47 +10,47 @@
 # tambourine, shaker, triangle_closed, triangle_open
 
 set	vcsl_standard_kit	VCSL Standard Kit
-piece	kick	membranophones_struck_membranophones_bass_drum_1
-piece	snare	membranophones_struck_membranophones_snare_drum_modern_1	HitSN
-piece	rim	membranophones_struck_membranophones_snare_drum_modern_1	taps
-piece	closed_hihat	idiophones_struck_idiophones_hi_hat_cymbal	HitC
-piece	open_hihat	idiophones_struck_idiophones_hi_hat_cymbal	HitO
-piece	low_tom	membranophones_struck_membranophones_tom_1	Stick/TomH_HitS
-piece	mid_tom	membranophones_struck_membranophones_tom_2	Stick/TomL_HitS
-piece	high_tom	membranophones_struck_membranophones_tom_2	Stick/TomL_HitS
-piece	crash	idiophones_struck_idiophones_clash_cymbals_2	crash
-piece	ride	idiophones_struck_idiophones_suspended_cymbal_2	hit_stick
-piece	clap	idiophones_struck_idiophones_claps
-piece	cowbell	idiophones_struck_idiophones_cowbells
-piece	tambourine	idiophones_struck_idiophones_tambourine_1
-piece	shaker	idiophones_struck_idiophones_shaker_small
-piece	triangle_closed	idiophones_struck_idiophones_triangles
-piece	triangle_open	idiophones_struck_idiophones_triangles
+piece	kick	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Membranophones/Struck Membranophones/Bass Drum 1/tables/membranophones_struck_membranophones_bass_drum_1.zones.tsv
+piece	snare	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Membranophones/Struck Membranophones/Snare Drum, Modern 1/tables/membranophones_struck_membranophones_snare_drum_modern_1.zones.tsv	HitSN
+piece	rim	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Membranophones/Struck Membranophones/Snare Drum, Modern 1/tables/membranophones_struck_membranophones_snare_drum_modern_1.zones.tsv	taps
+piece	closed_hihat	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Hi-Hat Cymbal/tables/idiophones_struck_idiophones_hi_hat_cymbal.zones.tsv	HitC
+piece	open_hihat	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Hi-Hat Cymbal/tables/idiophones_struck_idiophones_hi_hat_cymbal.zones.tsv	HitO
+piece	low_tom	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Membranophones/Struck Membranophones/Tom 1/tables/membranophones_struck_membranophones_tom_1.zones.tsv	Stick/TomH_HitS
+piece	mid_tom	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Membranophones/Struck Membranophones/Tom 2/tables/membranophones_struck_membranophones_tom_2.zones.tsv	Stick/TomL_HitS
+piece	high_tom	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Membranophones/Struck Membranophones/Tom 2/tables/membranophones_struck_membranophones_tom_2.zones.tsv	Stick/TomL_HitS
+piece	crash	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Clash Cymbals 2/tables/idiophones_struck_idiophones_clash_cymbals_2.zones.tsv	crash
+piece	ride	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Suspended Cymbal 2/tables/idiophones_struck_idiophones_suspended_cymbal_2.zones.tsv	hit_stick
+piece	clap	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Claps/tables/idiophones_struck_idiophones_claps.zones.tsv
+piece	cowbell	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Cowbells/tables/idiophones_struck_idiophones_cowbells.zones.tsv
+piece	tambourine	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Tambourine 1/tables/idiophones_struck_idiophones_tambourine_1.zones.tsv
+piece	shaker	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Shaker, Small/tables/idiophones_struck_idiophones_shaker_small.zones.tsv
+piece	triangle_closed	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Triangles/tables/idiophones_struck_idiophones_triangles.zones.tsv
+piece	triangle_open	/root/Bela/Samples/instruments/VCSL-1.2.2-RC/Idiophones/Struck Idiophones/Triangles/tables/idiophones_struck_idiophones_triangles.zones.tsv
 
 # Acoustic pop starter mapping (external open-license sources)
 # Enable after creating these per-role .zones.tsv files.
 # The runtime supports direct .zones.tsv paths in piece rows.
 # set	acoustic_pop_starter_kit	Acoustic Pop Starter Kit
-# piece	kick	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_kick.zones.tsv
-# piece	rim	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_rim.zones.tsv
-# piece	snare	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_snare.zones.tsv
-# piece	closed_hihat	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_clh.zones.tsv
-# piece	open_hihat	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_oph.zones.tsv
-# piece	low_tom	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_tom_low.zones.tsv
-# piece	mid_tom	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_tom_mid.zones.tsv
-# piece	high_tom	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_tom_high.zones.tsv
-# piece	crash	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_crash.zones.tsv
-# piece	ride	/root/Bela/Samples/bela_tables/acoustic_pop_starter/tables/aps_drum_ride.zones.tsv
+# piece	kick	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_kick.zones.tsv
+# piece	rim	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_rim.zones.tsv
+# piece	snare	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_snare.zones.tsv
+# piece	closed_hihat	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_clh.zones.tsv
+# piece	open_hihat	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_oph.zones.tsv
+# piece	low_tom	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_low.zones.tsv
+# piece	mid_tom	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_mid.zones.tsv
+# piece	high_tom	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_high.zones.tsv
+# piece	crash	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_crash.zones.tsv
+# piece	ride	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_ride.zones.tsv
 
 set	acoustic_pop_starter_kit	Acoustic Pop Starter Kit
-piece	kick	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_kick.zones.tsv
-piece	rim	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_rim.zones.tsv
-piece	snare	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_snare.zones.tsv
-piece	closed_hihat	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_clh.zones.tsv
-piece	open_hihat	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_oph.zones.tsv
-piece	low_tom	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_low.zones.tsv
-piece	mid_tom	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_mid.zones.tsv
-piece	high_tom	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_high.zones.tsv
-piece	crash	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_crash.zones.tsv
-piece	ride	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_ride.zones.tsv
-piece	ride_bell	/root/Bela/Samples/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_ride_bell.zones.tsv
+piece	kick	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_kick.zones.tsv
+piece	rim	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_rim.zones.tsv
+piece	snare	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_snare.zones.tsv
+piece	closed_hihat	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_clh.zones.tsv
+piece	open_hihat	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_oph.zones.tsv
+piece	low_tom	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_low.zones.tsv
+piece	mid_tom	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_mid.zones.tsv
+piece	high_tom	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_tom_high.zones.tsv
+piece	crash	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_crash.zones.tsv
+piece	ride	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_ride.zones.tsv
+piece	ride_bell	/root/Bela/Samples/instruments/acoustic_pop_sources/muldjord/MuldjordKit SFZ+WAV-20201018/tables/aps_drum_ride_bell.zones.tsv

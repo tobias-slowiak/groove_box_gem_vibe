@@ -33,5 +33,6 @@ public:
 private:
     ResourceManager& resourceManager;
     std::vector<float> gainz;
+    std::vector<float> gainRanges;
     std::vector<float> looperGainz;
 };

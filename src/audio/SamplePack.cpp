@@ -147,8 +147,8 @@ SamplePack::SamplePack(ResourceManager& resourceManager,
             : voices(resourceManager),
             samplePackName(std::move(samplePackName)),
             samplePackFolderPath(std::move(samplePackFolderPath)),
-            vcslRootPath(resolveExistingPath("/root/Bela/Samples/VCSL-1.2.2-RC", "Samples/VCSL-1.2.2-RC")),
-            tableRootPath(resolveExistingPath("/root/Bela/Samples/bela_tables/vcsl_full", "Samples/bela_tables/vcsl_full")),
+            vcslRootPath(resolveExistingPath("/root/Bela/Samples/instruments/VCSL-1.2.2-RC", "Samples/instruments/VCSL-1.2.2-RC")),
+            tableRootPath(resolveExistingPath("/root/Bela/Samples/data", "Samples/data")),
             sampleFileMap(),
             availableSamples(),
             sampleIdentifierByRelPath(),
@@ -342,6 +342,16 @@ std::string SamplePack::resolveZoneTablePath(const std::string& instrumentId) co
         if(zonesRelPath.empty()){
             break;
         }
+        if(zonesRelPath.find(".zones.tsv") != std::string::npos){
+            std::vector<std::string> candidates;
+            appendPathLayoutVariants(candidates, zonesRelPath);
+            appendPathLayoutVariants(candidates, tableRootPath + "/" + zonesRelPath);
+            for(const auto& candidate : candidates){
+                if(fileExists(candidate)){
+                    return candidate;
+                }
+            }
+        }
         return tableRootPath + "/" + zonesRelPath;
     }
 
@@ -372,7 +382,7 @@ void SamplePack::loadZonesFromFile(const std::string& zoneTablePath){
     const int volumeIndex = findColumnIndex(header, "volume_db");
     const int triggerIndex = findColumnIndex(header, "trigger");
     const int offsetIndex = findColumnIndex(header, "offset");
-    const int ampVeltrackIndex = findColumnIndex(header, "amp_veltrack");
+    const int ampVeltrackIndex = findColumnIndex(header, "amp_veltrack\r");
 
     if(sampleIndex < 0){
         throw std::runtime_error("SamplePack: zones file missing sample_relpath: " + zoneTablePath);
@@ -409,16 +419,9 @@ void SamplePack::loadZonesFromFile(const std::string& zoneTablePath){
             if(!sampleRelPath.empty() && sampleRelPath.front() == '/'){
                 absolutePath = sampleRelPath;
             } else {
-                const std::string zoneRelativePath = zoneTableDir + "/" + sampleRelPath;
-                const std::string packRelativePath = zonePackRoot + "/" + sampleRelPath;
-                const std::string vcslRelativePath = vcslRootPath + "/" + sampleRelPath;
-                if(fileExists(zoneRelativePath)){
-                    absolutePath = zoneRelativePath;
-                } else if(fileExists(packRelativePath)){
-                    absolutePath = packRelativePath;
-                } else {
-                    absolutePath = vcslRelativePath;
-                }
+                // Resolve relative paths exactly against the instrument folder
+                // (parent directory of `tables`).
+                absolutePath = zonePackRoot + "/" + sampleRelPath;
             }
             const int numFrames = AudioFileUtilities::getNumFrames(absolutePath);
             if(numFrames <= 0){
@@ -720,6 +723,9 @@ void SamplePack::triggerZone(const ZoneEntry& zone, int note, int midiVelocity, 
 }
 
 void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity, float explicitGain){
+    if(loading.load(std::memory_order_acquire)){
+        return;
+    }
     if(availableSamples.empty()){
         return;
     }
@@ -750,8 +756,9 @@ void SamplePack::triggerVoice(int note, int midiVelocity, bool gainFromVelocity,
 
 void SamplePack::triggerOff(int note){
     note = clampMidiValue(note);
+    const bool currentlyLoading = loading.load(std::memory_order_acquire);
 
-    if(hasReleaseZones){
+    if(!currentlyLoading && hasReleaseZones){
         const int releaseVelocity = lastNoteVelocity[static_cast<size_t>(note)];
         const ZoneIndexList& releaseZoneIndices = resolveZoneIndices(note, releaseVelocity, true);
         if(!releaseZoneIndices.empty()){

@@ -5,6 +5,7 @@ set -euo pipefail
 # Usage: ./deploy_to_bela_gem.sh [--debug] [--rebuild] [--copy-all] [--verbose] [--build-only]
 #        ./deploy_to_bela_gem.sh --sets-to-bela    # sync Samples/data -> Bela
 #        ./deploy_to_bela_gem.sh --sets-from-bela  # sync Bela Samples/data -> local
+#        ./deploy_to_bela_gem.sh --zones-to-bela   # sync all Samples/**/*.zones.tsv -> Bela
 
 DEBUG=0
 REBUILD=0
@@ -12,6 +13,7 @@ COPY_ALL=0
 VERBOSE=0
 BUILD_ONLY=0
 SETS_SYNC_MODE=""
+ZONES_SYNC_MODE=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -21,6 +23,10 @@ for arg in "$@"; do
     --verbose) VERBOSE=1 ;;
     --build-only) BUILD_ONLY=1 ;;
     --sets-to-bela)
+      if [[ "$ZONES_SYNC_MODE" -eq 1 ]]; then
+        echo "Choose only one sync mode: --sets-* or --zones-to-bela." >&2
+        exit 1
+      fi
       if [[ -n "$SETS_SYNC_MODE" && "$SETS_SYNC_MODE" != "to_bela" ]]; then
         echo "Choose only one of --sets-to-bela or --sets-from-bela." >&2
         exit 1
@@ -28,11 +34,22 @@ for arg in "$@"; do
       SETS_SYNC_MODE="to_bela"
       ;;
     --sets-from-bela)
+      if [[ "$ZONES_SYNC_MODE" -eq 1 ]]; then
+        echo "Choose only one sync mode: --sets-* or --zones-to-bela." >&2
+        exit 1
+      fi
       if [[ -n "$SETS_SYNC_MODE" && "$SETS_SYNC_MODE" != "from_bela" ]]; then
         echo "Choose only one of --sets-to-bela or --sets-from-bela." >&2
         exit 1
       fi
       SETS_SYNC_MODE="from_bela"
+      ;;
+    --zones-to-bela)
+      if [[ -n "$SETS_SYNC_MODE" ]]; then
+        echo "Choose only one sync mode: --sets-* or --zones-to-bela." >&2
+        exit 1
+      fi
+      ZONES_SYNC_MODE=1
       ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
@@ -52,12 +69,14 @@ LOCAL_SRC="${SCRIPT_DIR}/src"
 LOCAL_U8G2="${SCRIPT_DIR}/u8g2"
 LOCAL_DATA_DIR="${SCRIPT_DIR}/Samples/data"
 LOCAL_INSTRUMENT_SETS_FILE="${LOCAL_DATA_DIR}/instrument_sets.txt"
+LOCAL_SAMPLES_DIR="${SCRIPT_DIR}/Samples"
 STATE_FILE="${SCRIPT_DIR}/.deploy_state.txt"
 
 REMOTE_USER_HOST="root@${BELA_IP}"
 REMOTE_DATA_DIR="/root/Bela/Samples/data"
 REMOTE_SETS_FILE="${REMOTE_DATA_DIR}/instrument_sets.txt"
 REMOTE_LEGACY_SETS_FILE="/root/Bela/Samples/instrument_sets.txt"
+REMOTE_SAMPLES_ROOT="/root/Bela"
 
 require_tool() {
   local name="$1"
@@ -129,9 +148,29 @@ sync_sets_from_bela() {
   echo "[sets] Copied ${REMOTE_DATA_DIR}/ -> ${LOCAL_DATA_DIR}/"
 }
 
+sync_zones_to_bela() {
+  if [[ ! -d "$LOCAL_SAMPLES_DIR" ]]; then
+    echo "Missing local directory: $LOCAL_SAMPLES_DIR" >&2
+    exit 1
+  fi
+  local zones_count
+  zones_count="$(find "$LOCAL_SAMPLES_DIR" -type f -name '*.zones.tsv' | wc -l | awk '{print $1}')"
+  if [[ "$zones_count" -eq 0 ]]; then
+    echo "No .zones.tsv files found under: $LOCAL_SAMPLES_DIR" >&2
+    exit 1
+  fi
+  echo "[zones] Copying ${zones_count} .zones.tsv files from Samples/ local -> Bela"
+  (
+    cd "$SCRIPT_DIR"
+    find Samples -type f -name '*.zones.tsv' -print0 | tar --null -T - -cf -
+  ) | ssh "${SSH_OPTS[@]}" "$REMOTE_USER_HOST" "tar -xf - -C '$REMOTE_SAMPLES_ROOT'"
+  echo "[zones] Copied ${zones_count} .zones.tsv files into ${REMOTE_SAMPLES_ROOT}/Samples/"
+}
+
 require_tool ssh
 require_tool scp
 require_tool sha256sum
+require_tool tar
 
 if [[ -n "$SETS_SYNC_MODE" ]]; then
   echo "[sets] Starting Samples/data sync..."
@@ -141,6 +180,13 @@ if [[ -n "$SETS_SYNC_MODE" ]]; then
     *) echo "Internal error: unknown set sync mode '$SETS_SYNC_MODE'" >&2; exit 1 ;;
   esac
   echo "[sets] Done."
+  exit 0
+fi
+
+if [[ "$ZONES_SYNC_MODE" -eq 1 ]]; then
+  echo "[zones] Starting all Samples/**/*.zones.tsv sync..."
+  sync_zones_to_bela
+  echo "[zones] Done."
   exit 0
 fi
 

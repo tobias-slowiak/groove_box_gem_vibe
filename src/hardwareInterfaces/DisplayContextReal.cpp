@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
-//compiel
+//compil
 #include "../../include/hardwareInterfaces/IDisplayContext.h"
 #include "../../include/hardwareInterfaces/DisplayContextReal.h"
 #include "../../include/general/ResourceManager.h"
@@ -97,6 +97,9 @@ void DisplayContextReal::processBlockwise() {
     if(nowNs - marqueeLastTickEnqueueNs < MARQUEE_STEP_NS){
         return;
     }
+    if(nowNs - lastDisplayPushEnqueueNs < DISPLAY_PUSH_MIN_INTERVAL_NS){
+        return;
+    }
 
     bool expectedPending = false;
     if(!marqueeTickPending.compare_exchange_strong(expectedPending, true, std::memory_order_acq_rel)){
@@ -108,6 +111,7 @@ void DisplayContextReal::processBlockwise() {
     try{
         renderTask.pushMessage(TaskMessageTarget::TaskThread, tickMsg);
         marqueeLastTickEnqueueNs = nowNs;
+        lastDisplayPushEnqueueNs = nowNs;
         renderTask.taskCheckAndWorkMessages();
     } catch(const std::runtime_error&){
         // Never crash due to marquee animation pressure; skip this frame and retry later.
@@ -120,6 +124,10 @@ void DisplayContextReal::maybeQueueDeferredDisplayUpdate(){
         return;
     }
     if(displayUpdatePending.load(std::memory_order_acquire)){
+        return;
+    }
+    const uint64_t nowNs = steadyNowNs();
+    if(nowNs - lastDisplayPushEnqueueNs < DISPLAY_PUSH_MIN_INTERVAL_NS){
         return;
     }
     if(!deferredDisplayUpdate.exchange(false, std::memory_order_acq_rel)){
@@ -228,6 +236,12 @@ void DisplayContextReal::setLines(std::vector<std::vector<std::string>> lines,
 }
 
 void DisplayContextReal::sendTaskMessage(){
+    const uint64_t nowNs = steadyNowNs();
+    if(nowNs - lastDisplayPushEnqueueNs < DISPLAY_PUSH_MIN_INTERVAL_NS){
+        deferredDisplayUpdate.store(true, std::memory_order_release);
+        return;
+    }
+
     bool expectedPending = false;
     if(!displayUpdatePending.compare_exchange_strong(expectedPending, true, std::memory_order_acq_rel)){
         deferredDisplayUpdate.store(true, std::memory_order_release);
@@ -248,6 +262,7 @@ void DisplayContextReal::sendTaskMessage(){
 	msg.waveformEditStartBoundary = waveformEditStartBoundary;
     try{
 	    renderTask.pushMessage(TaskMessageTarget::TaskThread, msg);
+        lastDisplayPushEnqueueNs = nowNs;
     } catch(const std::runtime_error&){
         displayUpdatePending.store(false, std::memory_order_release);
         deferredDisplayUpdate.store(true, std::memory_order_release);

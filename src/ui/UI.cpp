@@ -108,9 +108,8 @@ void UI::setLooperGain(int looperId, float value){
 void UI::triggerVoice(int note, int velocity, bool melodicMode){
 		Samplers& samplers = ctxt.rm.getSamplers();
 		if(samplers.isKeyboardPlaybackEnabled()){
-			if(samplers.triggerNoteOn(note, velocity, ctxt.samplerIndex, ctxt.sliceIndex)){
-				return;
-			}
+			samplers.triggerNoteOn(note, velocity, ctxt.samplerIndex, ctxt.sliceIndex);
+			return;
 		}
 		if(melodicMode){
 			if(ctxt.rm.getKeyInstrumentSamplePack().isLoading()){

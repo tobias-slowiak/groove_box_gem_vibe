@@ -8,7 +8,10 @@
 Mixer::Mixer(ResourceManager& resourceManager): resourceManager(resourceManager){
     for(int i = 0; i < (int)GainId::COUNT; i++){
         gainz.push_back(1.0f);
+        gainRanges.push_back(1.0f);
     }
+    gainRanges[(int)GainId::AudioInL] = 100.0f;
+    gainRanges[(int)GainId::AudioInR] = 100.0f;
     for(int i = 0; i < resourceManager.getDeviceMap().initialLooperNumber; i++){
         looperGainz.push_back(1.0f);
     }
@@ -34,5 +37,5 @@ float Mixer::getGain(GainId gainId){
 }
 
 void Mixer::setGain(GainId gainId, float value){
-    VEC_AT(gainz, (int)gainId) = value;
+    VEC_AT(gainz, (int)gainId) = value * gainRanges[(int)gainId];
 }

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../streamingBuffer/StreamingBuffer.h"
+#include "ADSR.h"
 
 class ResourceManager;
 
@@ -85,6 +86,21 @@ private:
     };
 
     struct SamplerVoice {
+        SamplerVoice(ResourceManager& resourceManager,
+                     float attack = 0.01f,
+                     float decay = 0.0f,
+                     float sustain = 1.0f,
+                     float release = 0.1f)
+            : adsr(attack, decay, sustain, release, resourceManager)
+        {
+            adsr.init();
+        }
+
+        SamplerVoice(SamplerVoice&&) noexcept = default;
+        SamplerVoice& operator=(SamplerVoice&&) noexcept = default;
+        SamplerVoice(const SamplerVoice&) = delete;
+        SamplerVoice& operator=(const SamplerVoice&) = delete;
+
         StreamingBufferIterator* iteratorPtr = nullptr;
         int note = 0;
         float gain = 1.0f;
@@ -93,6 +109,8 @@ private:
         int currentIndex = 0;
         size_t sliceLengthInFrames = 0;
         float currentFrame = 0.0f;
+        bool noteReleased = false;
+        ADSR adsr;
     };
 
     ResourceManager& resourceManager;

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <utility>
 
 #include "../../include/audio/Samplers.h"
 #include "../../include/general/BasicUtilities.h"
@@ -15,6 +16,10 @@ constexpr int DEFAULT_MAX_SAMPLE_SLOTS = 64;
 constexpr int SAMPLER_MAX_ACTIVE_VOICES = 24;
 constexpr int SAMPLER_TOTAL_ITERATORS = SAMPLER_MAX_ACTIVE_VOICES + 8;
 constexpr const char* SAMPLER_STORAGE_FOLDER = "/root/Bela/Samples/Samplers";
+constexpr float SAMPLER_VOICE_ATTACK_SECONDS = 0.01f;
+constexpr float SAMPLER_VOICE_DECAY_SECONDS = 0.0f;
+constexpr float SAMPLER_VOICE_SUSTAIN_LEVEL = 1.0f;
+constexpr float SAMPLER_VOICE_RELEASE_SECONDS = 0.1f;
 
 float clampPitchShift(float value)
 {
@@ -405,7 +410,11 @@ bool Samplers::triggerNoteOn(int note,
         return false;
     }
 
-    SamplerVoice voice;
+    SamplerVoice voice(resourceManager,
+                       SAMPLER_VOICE_ATTACK_SECONDS,
+                       SAMPLER_VOICE_DECAY_SECONDS,
+                       SAMPLER_VOICE_SUSTAIN_LEVEL,
+                       SAMPLER_VOICE_RELEASE_SECONDS);
     voice.iteratorPtr = &iterator;
     voice.note = note;
     voice.gain = gain;
@@ -420,20 +429,18 @@ bool Samplers::triggerNoteOn(int note,
         return false;
     }
 
-    activeVoices.push_back(voice);
+    activeVoices.push_back(std::move(voice));
     return true;
 }
 
 void Samplers::triggerNoteOff(int note)
 {
-    for(auto it = activeVoices.begin(); it != activeVoices.end(); ){
+    for(auto it = activeVoices.begin(); it != activeVoices.end(); ++it){
         if(it->note == note){
-            if(it->iteratorPtr && it->iteratorPtr->sampleIdentifier.first != ITERATOR_INVALID){
-                it->iteratorPtr->release();
+            if(!it->noteReleased){
+                it->noteReleased = true;
+                it->adsr.noteOff();
             }
-            it = activeVoices.erase(it);
-        } else {
-            ++it;
         }
     }
 }
@@ -587,6 +594,14 @@ float Samplers::processVoices()
 {
     float mix = 0.0f;
     for(auto it = activeVoices.begin(); it != activeVoices.end(); ){
+        if(!it->adsr.isOn()){
+            if(it->iteratorPtr && it->iteratorPtr->sampleIdentifier.first != ITERATOR_INVALID){
+                it->iteratorPtr->release();
+            }
+            it = activeVoices.erase(it);
+            continue;
+        }
+
         if(!it->iteratorPtr || it->iteratorPtr->sampleIdentifier.first == ITERATOR_INVALID){
             it = activeVoices.erase(it);
             continue;
@@ -621,7 +636,7 @@ float Samplers::processVoices()
             continue;
         }
 
-        mix += it->currentFrame * it->gain;
+        mix += it->currentFrame * it->gain * it->adsr.process();
         it->position += it->playbackRate;
         ++it;
     }
